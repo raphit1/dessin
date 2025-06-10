@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>🎨 Dessine ton œuvre</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <h1>🖌️ Dessine ton œuvre</h1>
+
+  <div class="toolbar">
+    <label>Couleur :
+      <input type="color" id="color" value="#000000">
+    </label>
+    <label>Épaisseur :
+      <input type="range" id="size" min="1" max="30" value="5">
+    </label>
+  </div>
+
+  <canvas id="canvas" width="500" height="500"></canvas>
+
+  <input type="text" id="title" placeholder="Titre de l'œuvre">
+  <button id="submit">✅ Valider</button>
+
+  <script src="script.js"></script>
+</body>
+</html>
