@@ -1,88 +1,156 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Canvas Dessin Compatible Mobile</title>
-<style>
-  body, html {
-    margin: 0; padding: 0; height: 100%;
-    display: flex; justify-content: center; align-items: center;
-    background: #f0f0f0;
-  }
-  canvas {
-    border: 2px solid #333;
-    touch-action: none; /* important pour bloquer le scroll sur mobile pendant le dessin */
-  }
-</style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dessiner une œuvre</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      background: #f9f9f9;
+      margin: 0; padding: 1em;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    canvas {
+      border: 2px solid #000;
+      margin-top: 1em;
+      touch-action: none;
+    }
+    .controls {
+      margin-top: 1em;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5em;
+      width: 100%;
+      max-width: 400px;
+    }
+    label {
+      font-weight: bold;
+    }
+    button {
+      padding: 0.5em;
+      font-size: 1em;
+    }
+  </style>
 </head>
 <body>
 
-<canvas id="drawing-canvas" width="400" height="400"></canvas>
+  <h1>🖌️ Dessine ton œuvre !</h1>
 
-<script>
-  const canvas = document.getElementById('drawing-canvas');
-  const ctx = canvas.getContext('2d');
-  ctx.lineWidth = 3;
-  ctx.lineCap = 'round';
-  ctx.strokeStyle = '#000';
+  <div class="controls">
+    <label for="color">🎨 Couleur :</label>
+    <input type="color" id="color" value="#000000">
 
-  let drawing = false;
+    <label for="size">🔧 Taille du pinceau :</label>
+    <input type="range" id="size" min="1" max="20" value="3">
 
-  function startDrawing(x, y) {
-    drawing = true;
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-  }
+    <label for="title">📝 Titre de ton œuvre :</label>
+    <input type="text" id="title" placeholder="Titre...">
 
-  function draw(x, y) {
-    if (!drawing) return;
-    ctx.lineTo(x, y);
-    ctx.stroke();
-  }
+    <button id="submit">✅ Valider et envoyer</button>
+  </div>
 
-  function stopDrawing() {
-    drawing = false;
-    ctx.closePath();
-  }
+  <canvas id="drawing-canvas" width="400" height="400"></canvas>
 
-  // Gestion souris
-  canvas.addEventListener('mousedown', e => {
-    startDrawing(e.offsetX, e.offsetY);
-  });
+  <script>
+    const canvas = document.getElementById('drawing-canvas');
+    const ctx = canvas.getContext('2d');
+    const colorPicker = document.getElementById('color');
+    const sizePicker = document.getElementById('size');
+    const titleInput = document.getElementById('title');
+    const submitButton = document.getElementById('submit');
 
-  canvas.addEventListener('mousemove', e => {
-    draw(e.offsetX, e.offsetY);
-  });
+    let drawing = false;
 
-  canvas.addEventListener('mouseup', stopDrawing);
-  canvas.addEventListener('mouseout', stopDrawing);
+    ctx.lineWidth = sizePicker.value;
+    ctx.strokeStyle = colorPicker.value;
+    ctx.lineCap = 'round';
 
-  // Gestion tactile
-  canvas.addEventListener('touchstart', e => {
-    e.preventDefault();
-    const touch = e.touches[0];
-    const rect = canvas.getBoundingClientRect();
-    startDrawing(touch.clientX - rect.left, touch.clientY - rect.top);
-  });
+    function getXY(e) {
+      const rect = canvas.getBoundingClientRect();
+      if (e.touches) {
+        return {
+          x: e.touches[0].clientX - rect.left,
+          y: e.touches[0].clientY - rect.top
+        };
+      } else {
+        return {
+          x: e.offsetX,
+          y: e.offsetY
+        };
+      }
+    }
 
-  canvas.addEventListener('touchmove', e => {
-    e.preventDefault();
-    const touch = e.touches[0];
-    const rect = canvas.getBoundingClientRect();
-    draw(touch.clientX - rect.left, touch.clientY - rect.top);
-  });
+    function startDraw(e) {
+      drawing = true;
+      const { x, y } = getXY(e);
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+    }
 
-  canvas.addEventListener('touchend', e => {
-    e.preventDefault();
-    stopDrawing();
-  });
+    function draw(e) {
+      if (!drawing) return;
+      const { x, y } = getXY(e);
+      ctx.lineTo(x, y);
+      ctx.stroke();
+    }
 
-  canvas.addEventListener('touchcancel', e => {
-    e.preventDefault();
-    stopDrawing();
-  });
-</script>
+    function stopDraw() {
+      drawing = false;
+      ctx.closePath();
+    }
+
+    // Events
+    canvas.addEventListener('mousedown', startDraw);
+    canvas.addEventListener('mousemove', draw);
+    canvas.addEventListener('mouseup', stopDraw);
+    canvas.addEventListener('mouseout', stopDraw);
+
+    canvas.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      startDraw(e);
+    });
+    canvas.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      draw(e);
+    });
+    canvas.addEventListener('touchend', stopDraw);
+    canvas.addEventListener('touchcancel', stopDraw);
+
+    // Update brush
+    colorPicker.addEventListener('change', () => {
+      ctx.strokeStyle = colorPicker.value;
+    });
+
+    sizePicker.addEventListener('input', () => {
+      ctx.lineWidth = sizePicker.value;
+    });
+
+    // Submit
+    submitButton.addEventListener('click', async () => {
+      const title = titleInput.value.trim();
+      if (!title) return alert("Ajoute un titre à ton œuvre !");
+      
+      const image = canvas.toDataURL('image/png');
+      
+      try {
+        const res = await fetch('/submit-drawing', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title, image })
+        });
+        const data = await res.json();
+        alert(data.message || "✅ Envoyé !");
+        // Reset canvas
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        titleInput.value = '';
+      } catch (err) {
+        alert('❌ Erreur lors de l’envoi.');
+      }
+    });
+  </script>
 
 </body>
 </html>
