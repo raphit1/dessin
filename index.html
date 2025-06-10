@@ -1,28 +1,101 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>🎨 Dessine ton œuvre</title>
-  <link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8" />
+  <title>Dessin en ligne</title>
+  <style>
+    body {
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      font-family: sans-serif;
+      background-color: #f0f0f0;
+    }
+    canvas {
+      border: 2px solid #333;
+      margin-top: 20px;
+      background-color: white;
+      cursor: crosshair;
+    }
+    .toolbar {
+      margin-top: 10px;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+    button {
+      padding: 6px 12px;
+      font-size: 14px;
+    }
+  </style>
 </head>
 <body>
-  <h1>🖌️ Dessine ton œuvre</h1>
+  <h1>🎨 Dessine ton œuvre !</h1>
 
   <div class="toolbar">
-    <label>Couleur :
-      <input type="color" id="color" value="#000000">
+    <label>🖌️ Taille :
+      <input id="size" type="range" min="1" max="20" value="5">
     </label>
-    <label>Épaisseur :
-      <input type="range" id="size" min="1" max="30" value="5">
-    </label>
+    <input id="color" type="color" value="#000000" />
+    <button onclick="clearCanvas()">🗑️ Effacer</button>
+    <button onclick="downloadImage()">✅ Terminé</button>
   </div>
 
-  <canvas id="canvas" width="500" height="500"></canvas>
+  <canvas id="canvas" width="500" height="400"></canvas>
 
-  <input type="text" id="title" placeholder="Titre de l'œuvre">
-  <button id="submit">✅ Valider</button>
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    let painting = false;
 
-  <script src="script.js"></script>
+    canvas.addEventListener('mousedown', () => {
+      painting = true;
+      ctx.beginPath();
+    });
+
+    canvas.addEventListener('mouseup', () => {
+      painting = false;
+      ctx.beginPath();
+    });
+
+    canvas.addEventListener('mouseleave', () => {
+      painting = false;
+      ctx.beginPath();
+    });
+
+    canvas.addEventListener('mousemove', draw);
+
+    function draw(e) {
+      if (!painting) return;
+
+      const rect = canvas.getBoundingClientRect();
+      ctx.lineWidth = document.getElementById('size').value;
+      ctx.strokeStyle = document.getElementById('color').value;
+      ctx.lineCap = 'round';
+
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+
+      ctx.lineTo(x, y);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+    }
+
+    function clearCanvas() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.beginPath();
+    }
+
+    function downloadImage() {
+      const title = prompt("🎨 Donne un titre à ton œuvre :");
+      if (!title) return alert("❌ Titre obligatoire !");
+      const link = document.createElement('a');
+      link.download = `${title}.png`;
+      link.href = canvas.toDataURL();
+      link.click();
+    }
+  </script>
 </body>
 </html>
