@@ -1,101 +1,88 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8" />
-  <title>Dessin en ligne</title>
-  <style>
-    body {
-      margin: 0;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      font-family: sans-serif;
-      background-color: #f0f0f0;
-    }
-    canvas {
-      border: 2px solid #333;
-      margin-top: 20px;
-      background-color: white;
-      cursor: crosshair;
-    }
-    .toolbar {
-      margin-top: 10px;
-      display: flex;
-      gap: 10px;
-      align-items: center;
-    }
-    button {
-      padding: 6px 12px;
-      font-size: 14px;
-    }
-  </style>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Canvas Dessin Compatible Mobile</title>
+<style>
+  body, html {
+    margin: 0; padding: 0; height: 100%;
+    display: flex; justify-content: center; align-items: center;
+    background: #f0f0f0;
+  }
+  canvas {
+    border: 2px solid #333;
+    touch-action: none; /* important pour bloquer le scroll sur mobile pendant le dessin */
+  }
+</style>
 </head>
 <body>
-  <h1>🎨 Dessine ton œuvre !</h1>
 
-  <div class="toolbar">
-    <label>🖌️ Taille :
-      <input id="size" type="range" min="1" max="20" value="5">
-    </label>
-    <input id="color" type="color" value="#000000" />
-    <button onclick="clearCanvas()">🗑️ Effacer</button>
-    <button onclick="downloadImage()">✅ Terminé</button>
-  </div>
+<canvas id="drawing-canvas" width="400" height="400"></canvas>
 
-  <canvas id="canvas" width="500" height="400"></canvas>
+<script>
+  const canvas = document.getElementById('drawing-canvas');
+  const ctx = canvas.getContext('2d');
+  ctx.lineWidth = 3;
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = '#000';
 
-  <script>
-    const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d');
-    let painting = false;
+  let drawing = false;
 
-    canvas.addEventListener('mousedown', () => {
-      painting = true;
-      ctx.beginPath();
-    });
+  function startDrawing(x, y) {
+    drawing = true;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+  }
 
-    canvas.addEventListener('mouseup', () => {
-      painting = false;
-      ctx.beginPath();
-    });
+  function draw(x, y) {
+    if (!drawing) return;
+    ctx.lineTo(x, y);
+    ctx.stroke();
+  }
 
-    canvas.addEventListener('mouseleave', () => {
-      painting = false;
-      ctx.beginPath();
-    });
+  function stopDrawing() {
+    drawing = false;
+    ctx.closePath();
+  }
 
-    canvas.addEventListener('mousemove', draw);
+  // Gestion souris
+  canvas.addEventListener('mousedown', e => {
+    startDrawing(e.offsetX, e.offsetY);
+  });
 
-    function draw(e) {
-      if (!painting) return;
+  canvas.addEventListener('mousemove', e => {
+    draw(e.offsetX, e.offsetY);
+  });
 
-      const rect = canvas.getBoundingClientRect();
-      ctx.lineWidth = document.getElementById('size').value;
-      ctx.strokeStyle = document.getElementById('color').value;
-      ctx.lineCap = 'round';
+  canvas.addEventListener('mouseup', stopDrawing);
+  canvas.addEventListener('mouseout', stopDrawing);
 
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
+  // Gestion tactile
+  canvas.addEventListener('touchstart', e => {
+    e.preventDefault();
+    const touch = e.touches[0];
+    const rect = canvas.getBoundingClientRect();
+    startDrawing(touch.clientX - rect.left, touch.clientY - rect.top);
+  });
 
-      ctx.lineTo(x, y);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-    }
+  canvas.addEventListener('touchmove', e => {
+    e.preventDefault();
+    const touch = e.touches[0];
+    const rect = canvas.getBoundingClientRect();
+    draw(touch.clientX - rect.left, touch.clientY - rect.top);
+  });
 
-    function clearCanvas() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.beginPath();
-    }
+  canvas.addEventListener('touchend', e => {
+    e.preventDefault();
+    stopDrawing();
+  });
 
-    function downloadImage() {
-      const title = prompt("🎨 Donne un titre à ton œuvre :");
-      if (!title) return alert("❌ Titre obligatoire !");
-      const link = document.createElement('a');
-      link.download = `${title}.png`;
-      link.href = canvas.toDataURL();
-      link.click();
-    }
-  </script>
+  canvas.addEventListener('touchcancel', e => {
+    e.preventDefault();
+    stopDrawing();
+  });
+</script>
+
 </body>
 </html>
