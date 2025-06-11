@@ -2,155 +2,166 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>App de dessin</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>🖌️ Dessine ton œuvre</title>
   <style>
-    body { font-family: Arial, sans-serif; margin: 20px; }
-    #canvas { border:1px solid #ccc; touch-action: none; }
-    .controls { margin-top: 10px; }
-    button { margin-right: 10px; }
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      background: #f2f2f2;
+      margin: 0;
+      padding: 20px;
+    }
+    canvas {
+      border: 2px solid #333;
+      background: #fff;
+      touch-action: none;
+    }
+    .controls {
+      margin: 15px 0;
+    }
+    input[type="color"], input[type="range"] {
+      margin: 0 10px;
+    }
+    button {
+      padding: 10px 20px;
+      margin: 10px;
+      font-size: 1rem;
+      cursor: pointer;
+    }
+    input[type="text"] {
+      padding: 8px;
+      width: 200px;
+      font-size: 1rem;
+    }
   </style>
 </head>
 <body>
-  <h2>🎨 Dessine ton œuvre</h2>
-  <canvas id="canvas" width="400" height="300"></canvas>
+
+  <h1>🎨 Dessine ton chef-d'œuvre</h1>
+
+  <canvas id="canvas" width="300" height="300"></canvas>
 
   <div class="controls">
-    <label for="color">Couleur :</label>
-    <input type="color" id="color" value="#000000" />
-    <label for="size">Taille :</label>
-    <input type="range" id="size" min="1" max="10" value="3" />
+    <label>Couleur : <input type="color" id="color" value="#000000"></label>
+    <label>Taille : <input type="range" id="size" min="1" max="30" value="5"></label>
   </div>
 
-  <div class="controls">
-    <input type="text" id="title" placeholder="Titre de l'œuvre" />
-    <button id="undo">↩️ Retour</button>
-    <button id="clear">🧹 Effacer tout</button>
-    <button id="submit">✅ Valider & Envoyer</button>
+  <div>
+    <button onclick="clearCanvas()">🧹 Effacer</button>
+    <button onclick="undo()">↩️ Retour</button>
   </div>
 
-  <div id="message" style="margin-top:10px; color: red;"></div>
+  <div>
+    <input type="text" id="title" placeholder="Titre de ton œuvre" />
+  </div>
+
+  <div>
+    <button onclick="sendArtwork()">📤 Envoyer au salon</button>
+  </div>
 
   <script>
-    (() => {
-      const canvas = document.getElementById('canvas');
-      const ctx = canvas.getContext('2d');
-      const colorPicker = document.getElementById('color');
-      const sizePicker = document.getElementById('size');
-      const clearBtn = document.getElementById('clear');
-      const undoBtn = document.getElementById('undo');
-      const submitBtn = document.getElementById('submit');
-      const titleInput = document.getElementById('title');
-      const messageDiv = document.getElementById('message');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const colorPicker = document.getElementById('color');
+    const sizePicker = document.getElementById('size');
+    const titleInput = document.getElementById('title');
 
-      let drawing = false;
-      let lastX = 0;
-      let lastY = 0;
-      const history = [];
+    let painting = false;
+    let history = [];
 
-      function saveState() {
-        history.push(canvas.toDataURL());
-        if (history.length > 50) history.shift(); // limite mémoire
+    canvas.addEventListener('mousedown', startDraw);
+    canvas.addEventListener('touchstart', startDraw, { passive: false });
+
+    canvas.addEventListener('mouseup', endDraw);
+    canvas.addEventListener('touchend', endDraw);
+
+    canvas.addEventListener('mousemove', draw);
+    canvas.addEventListener('touchmove', draw, { passive: false });
+
+    function getPos(e) {
+      if (e.touches) {
+        return {
+          x: e.touches[0].clientX - canvas.offsetLeft,
+          y: e.touches[0].clientY - canvas.offsetTop,
+        };
       }
-
-      function startDraw(e) {
-        drawing = true;
-        [lastX, lastY] = getXY(e);
-        saveState();
-      }
-
-      function endDraw() {
-        drawing = false;
-      }
-
-      function draw(e) {
-        if (!drawing) return;
-        const [x, y] = getXY(e);
-        ctx.strokeStyle = colorPicker.value;
-        ctx.lineWidth = sizePicker.value;
-        ctx.lineCap = 'round';
-
-        ctx.beginPath();
-        ctx.moveTo(lastX, lastY);
-        ctx.lineTo(x, y);
-        ctx.stroke();
-        [lastX, lastY] = [x, y];
-      }
-
-      function getXY(e) {
-        if (e.touches) {
-          const rect = canvas.getBoundingClientRect();
-          return [
-            e.touches[0].clientX - rect.left,
-            e.touches[0].clientY - rect.top
-          ];
-        } else {
-          return [e.offsetX, e.offsetY];
-        }
-      }
-
-      canvas.addEventListener('mousedown', startDraw);
-      canvas.addEventListener('mouseup', endDraw);
-      canvas.addEventListener('mouseout', endDraw);
-      canvas.addEventListener('mousemove', draw);
-      canvas.addEventListener('touchstart', startDraw, {passive:false});
-      canvas.addEventListener('touchend', endDraw);
-      canvas.addEventListener('touchcancel', endDraw);
-      canvas.addEventListener('touchmove', e => { e.preventDefault(); draw(e); }, {passive:false});
-
-      clearBtn.onclick = () => {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        messageDiv.textContent = '';
-        history.length = 0;
+      return {
+        x: e.clientX - canvas.offsetLeft,
+        y: e.clientY - canvas.offsetTop,
       };
+    }
 
-      undoBtn.onclick = () => {
-        if (history.length > 0) {
-          const img = new Image();
-          img.onload = () => {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.drawImage(img, 0, 0);
-          };
-          img.src = history.pop();
-        } else {
-          messageDiv.textContent = '❗ Rien à annuler';
-        }
-      };
+    function startDraw(e) {
+      e.preventDefault();
+      painting = true;
+      saveHistory();
+      draw(e);
+    }
 
-      submitBtn.onclick = async () => {
-        const title = titleInput.value.trim();
-        if (!title) {
-          messageDiv.textContent = '⚠️ Veuillez entrer un titre.';
-          return;
-        }
+    function endDraw() {
+      painting = false;
+      ctx.beginPath();
+    }
 
-        const image = canvas.toDataURL('image/png');
-        try {
-          messageDiv.style.color = 'black';
-          messageDiv.textContent = '⏳ Envoi en cours...';
+    function draw(e) {
+      if (!painting) return;
+      const pos = getPos(e);
+      ctx.lineWidth = sizePicker.value;
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = colorPicker.value;
+      ctx.lineTo(pos.x, pos.y);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(pos.x, pos.y);
+    }
 
-          const response = await fetch('/submit-artwork', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ image, title })
-          });
+    function clearCanvas() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      history = [];
+    }
 
-          const data = await response.json();
-          if (!response.ok) {
-            messageDiv.textContent = `❌ Erreur : ${data.error || 'inconnue'}`;
-            return;
-          }
+    function saveHistory() {
+      history.push(canvas.toDataURL());
+      if (history.length > 20) history.shift();
+    }
 
-          messageDiv.style.color = 'green';
-          messageDiv.textContent = data.status || '✅ Œuvre envoyée !';
+    function undo() {
+      if (history.length === 0) return;
+      const last = history.pop();
+      const img = new Image();
+      img.onload = () => ctx.drawImage(img, 0, 0);
+      img.src = last;
+    }
+
+    async function sendArtwork() {
+      const title = titleInput.value.trim();
+      if (!title) return alert('Donne un titre à ton œuvre !');
+
+      const image = canvas.toDataURL('image/png');
+
+      try {
+        const res = await fetch('/submit-artwork', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title, image }),
+        });
+
+        const result = await res.json();
+
+        if (res.ok) {
+          alert('✅ Œuvre envoyée avec succès !');
+          clearCanvas();
           titleInput.value = '';
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
-          history.length = 0;
-        } catch (err) {
-          messageDiv.textContent = '❌ Erreur réseau ou serveur.';
+        } else {
+          console.error(result);
+          alert('❌ Erreur lors de l\'envoi : ' + (result.error || 'Inconnue'));
         }
-      };
-    })();
+      } catch (err) {
+        console.error(err);
+        alert('❌ Erreur de connexion au serveur.');
+      }
+    }
   </script>
 </body>
 </html>
