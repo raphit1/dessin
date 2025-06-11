@@ -1,224 +1,127 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Dessine ton œuvre 🎨</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      margin: 1rem;
-      background: #f0f0f5;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      user-select: none;
-    }
-    h1 {
-      color: #333;
-    }
-    #canvas {
-      border: 2px solid #333;
-      border-radius: 8px;
-      touch-action: none; /* Important pour mobile */
-      background: white;
-      cursor: crosshair;
-    }
-    .controls {
-      margin: 10px 0;
-      display: flex;
-      gap: 1rem;
-      flex-wrap: wrap;
-      justify-content: center;
-      align-items: center;
-    }
-    label {
-      font-weight: bold;
-      color: #555;
-    }
-    input[type="color"],
-    input[type="range"] {
-      cursor: pointer;
-    }
-    button {
-      background-color: #4caf50;
-      border: none;
-      color: white;
-      padding: 10px 16px;
-      font-size: 1rem;
-      border-radius: 6px;
-      cursor: pointer;
-      transition: background-color 0.3s ease;
-    }
-    button:hover {
-      background-color: #45a049;
-    }
-    button:disabled {
-      background-color: #a5d6a7;
-      cursor: not-allowed;
-    }
-    input[type="text"] {
-      padding: 8px;
-      font-size: 1rem;
-      border-radius: 6px;
-      border: 1px solid #ccc;
-      width: 250px;
-      max-width: 90vw;
-    }
-  </style>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>App de dessin</title>
+<style>
+  body { font-family: Arial, sans-serif; margin: 20px; }
+  #canvas { border:1px solid #ccc; touch-action: none; }
+  .controls { margin-top: 10px; }
+  button { margin-right: 10px; }
+</style>
 </head>
 <body>
-  <h1>Dessine ton œuvre 🎨</h1>
+<h2>🎨 Dessine ton œuvre</h2>
+<canvas id="canvas" width="400" height="300"></canvas>
 
-  <canvas id="canvas" width="400" height="400"></canvas>
+<div class="controls">
+  <label for="color">Couleur :</label>
+  <input type="color" id="color" value="#000000" />
+  <label for="size">Taille :</label>
+  <input type="range" id="size" min="1" max="10" value="3" />
+</div>
 
-  <div class="controls">
-    <label for="colorPicker">Couleur :</label>
-    <input type="color" id="colorPicker" value="#000000" />
+<div class="controls">
+  <input type="text" id="title" placeholder="Titre de l'œuvre" />
+  <button id="clear">Effacer</button>
+  <button id="submit">Valider & Envoyer</button>
+</div>
 
-    <label for="brushSize">Taille :</label>
-    <input type="range" id="brushSize" min="1" max="30" value="5" />
+<div id="message" style="margin-top:10px; color: red;"></div>
 
-    <button id="undoBtn" disabled>↩️ Annuler</button>
-  </div>
+<script>
+(() => {
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+  const colorPicker = document.getElementById('color');
+  const sizePicker = document.getElementById('size');
+  const clearBtn = document.getElementById('clear');
+  const submitBtn = document.getElementById('submit');
+  const titleInput = document.getElementById('title');
+  const messageDiv = document.getElementById('message');
 
-  <input type="text" id="title" placeholder="Titre de ton œuvre" maxlength="100" />
+  let drawing = false;
+  let lastX = 0;
+  let lastY = 0;
 
-  <div style="margin-top: 10px;">
-    <button id="sendBtn">Envoyer l'œuvre</button>
-  </div>
+  // Setup canvas drawing handlers
+  function startDraw(e) {
+    drawing = true;
+    [lastX, lastY] = getXY(e);
+  }
+  function endDraw() {
+    drawing = false;
+  }
+  function draw(e) {
+    if (!drawing) return;
+    const [x, y] = getXY(e);
+    ctx.strokeStyle = colorPicker.value;
+    ctx.lineWidth = sizePicker.value;
+    ctx.lineCap = 'round';
 
-  <script>
-    const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d');
-    let drawing = false;
-    let lastPos = { x: 0, y: 0 };
-    const colorPicker = document.getElementById('colorPicker');
-    const brushSize = document.getElementById('brushSize');
-    const undoBtn = document.getElementById('undoBtn');
-    const sendBtn = document.getElementById('sendBtn');
-    const titleInput = document.getElementById('title');
-
-    // Historique pour undo
-    const history = [];
-    const maxHistory = 20;
-
-    // Initialisation canvas blanc
-    ctx.fillStyle = 'white';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    function saveState() {
-      if (history.length >= maxHistory) {
-        history.shift();
-      }
-      history.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
-      undoBtn.disabled = false;
-    }
-
-    function restoreState() {
-      if (history.length === 0) return;
-      const imgData = history.pop();
-      ctx.putImageData(imgData, 0, 0);
-      if (history.length === 0) undoBtn.disabled = true;
-    }
-
-    function getPointerPos(e) {
+    ctx.beginPath();
+    ctx.moveTo(lastX, lastY);
+    ctx.lineTo(x, y);
+    ctx.stroke();
+    [lastX, lastY] = [x, y];
+  }
+  function getXY(e) {
+    if (e.touches) {
       const rect = canvas.getBoundingClientRect();
-      let clientX, clientY;
-      if (e.touches && e.touches.length > 0) {
-        clientX = e.touches[0].clientX;
-        clientY = e.touches[0].clientY;
-      } else {
-        clientX = e.clientX;
-        clientY = e.clientY;
-      }
-      return {
-        x: clientX - rect.left,
-        y: clientY - rect.top,
-      };
+      return [
+        e.touches[0].clientX - rect.left,
+        e.touches[0].clientY - rect.top
+      ];
+    } else {
+      return [e.offsetX, e.offsetY];
     }
+  }
 
-    function startDraw(e) {
-      e.preventDefault();
-      drawing = true;
-      lastPos = getPointerPos(e);
-      saveState();
+  canvas.addEventListener('mousedown', startDraw);
+  canvas.addEventListener('mouseup', endDraw);
+  canvas.addEventListener('mouseout', endDraw);
+  canvas.addEventListener('mousemove', draw);
+  canvas.addEventListener('touchstart', startDraw, {passive:false});
+  canvas.addEventListener('touchend', endDraw);
+  canvas.addEventListener('touchcancel', endDraw);
+  canvas.addEventListener('touchmove', e => { e.preventDefault(); draw(e); }, {passive:false});
+
+  clearBtn.onclick = () => {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    messageDiv.textContent = '';
+  };
+
+  submitBtn.onclick = async () => {
+    const title = titleInput.value.trim();
+    if (!title) {
+      messageDiv.textContent = '⚠️ Veuillez entrer un titre.';
+      return;
     }
+    const image = canvas.toDataURL('image/png');
 
-    function draw(e) {
-      if (!drawing) return;
-      e.preventDefault();
-      const pos = getPointerPos(e);
-
-      ctx.strokeStyle = colorPicker.value;
-      ctx.lineWidth = brushSize.value;
-      ctx.lineCap = 'round';
-
-      ctx.beginPath();
-      ctx.moveTo(lastPos.x, lastPos.y);
-      ctx.lineTo(pos.x, pos.y);
-      ctx.stroke();
-
-      lastPos = pos;
-    }
-
-    function stopDraw(e) {
-      if (!drawing) return;
-      e.preventDefault();
-      drawing = false;
-    }
-
-    // Événements souris et tactile
-    canvas.addEventListener('mousedown', startDraw);
-    canvas.addEventListener('mousemove', draw);
-    canvas.addEventListener('mouseup', stopDraw);
-    canvas.addEventListener('mouseout', stopDraw);
-
-    canvas.addEventListener('touchstart', startDraw, { passive: false });
-    canvas.addEventListener('touchmove', draw, { passive: false });
-    canvas.addEventListener('touchend', stopDraw);
-    canvas.addEventListener('touchcancel', stopDraw);
-
-    undoBtn.addEventListener('click', () => {
-      restoreState();
-    });
-
-    sendBtn.addEventListener('click', () => {
-      const title = titleInput.value.trim();
-      if (!title) {
-        alert('Merci de donner un titre à ton œuvre.');
-        return;
-      }
-
-      // Récupérer image base64
-      const image = canvas.toDataURL('image/png');
-
-      sendBtn.disabled = true;
-      sendBtn.textContent = 'Envoi en cours...';
-
-      fetch('https://dessin.onrender.com/submit-artwork', {
+    try {
+      messageDiv.textContent = '⏳ Envoi en cours...';
+      const response = await fetch('/submit-artwork', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image, title }),
-      })
-        .then((res) => res.json())
-        .then((data) => {
-          alert(data.message || 'Œuvre envoyée avec succès !');
-          // Reset canvas et titre
-          ctx.fillStyle = 'white';
-          ctx.fillRect(0, 0, canvas.width, canvas.height);
-          titleInput.value = '';
-          history.length = 0;
-          undoBtn.disabled = true;
-        })
-        .catch((err) => {
-          alert('Erreur lors de l’envoi : ' + err.message);
-        })
-        .finally(() => {
-          sendBtn.disabled = false;
-          sendBtn.textContent = "Envoyer l'œuvre";
-        });
-    });
-  </script>
+        body: JSON.stringify({ image, title })
+      });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        messageDiv.textContent = `❌ Erreur: ${errorData.error || response.statusText}`;
+        return;
+      }
+      const data = await response.json();
+      messageDiv.style.color = 'green';
+      messageDiv.textContent = data.status || '✅ Envoi réussi !';
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      titleInput.value = '';
+    } catch (err) {
+      messageDiv.textContent = '❌ Erreur réseau ou serveur.';
+    }
+  };
+})();
+</script>
 </body>
 </html>
