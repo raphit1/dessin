@@ -1,165 +1,83 @@
+<!-- index.html (client) -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>🖌️ Dessine ton œuvre</title>
+  <title>🎨 Dessin</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      text-align: center;
-      background: #f2f2f2;
-      margin: 0;
-      padding: 20px;
-    }
-    canvas {
-      border: 2px solid #333;
-      background: #fff;
-      touch-action: none;
-    }
-    .controls {
-      margin: 15px 0;
-    }
-    input[type="color"], input[type="range"] {
-      margin: 0 10px;
-    }
-    button {
-      padding: 10px 20px;
-      margin: 10px;
-      font-size: 1rem;
-      cursor: pointer;
-    }
-    input[type="text"] {
-      padding: 8px;
-      width: 200px;
-      font-size: 1rem;
-    }
+    body { font-family: sans-serif; text-align: center; margin: 20px; background: #f4f4f4; }
+    canvas { border: 2px solid #333; touch-action: none; }
+    input, button, select { margin: 10px; padding: 10px; font-size: 16px; }
   </style>
 </head>
 <body>
-
-  <h1>🎨 Dessine ton chef-d'œuvre</h1>
-
+  <h1>🖌️ Crée ton œuvre</h1>
   <canvas id="canvas" width="300" height="300"></canvas>
-
-  <div class="controls">
-    <label>Couleur : <input type="color" id="color" value="#000000"></label>
-    <label>Taille : <input type="range" id="size" min="1" max="30" value="5"></label>
-  </div>
-
   <div>
+    <input type="color" id="color" value="#000000" />
+    <select id="size">
+      <option value="2">Fin</option>
+      <option value="5" selected>Moyen</option>
+      <option value="10">Large</option>
+    </select>
+    <br />
+    <input type="text" id="title" placeholder="Titre de l'œuvre" />
+    <br />
+    <button onclick="sendDrawing()">✅ Envoyer</button>
     <button onclick="clearCanvas()">🧹 Effacer</button>
-    <button onclick="undo()">↩️ Retour</button>
-  </div>
-
-  <div>
-    <input type="text" id="title" placeholder="Titre de ton œuvre" />
-  </div>
-
-  <div>
-    <button onclick="sendArtwork()">📤 Envoyer au salon</button>
   </div>
 
   <script>
-    const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d');
-    const colorPicker = document.getElementById('color');
-    const sizePicker = document.getElementById('size');
-    const titleInput = document.getElementById('title');
-
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
     let painting = false;
-    let history = [];
 
-    canvas.addEventListener('mousedown', startDraw);
-    canvas.addEventListener('touchstart', startDraw, { passive: false });
+    canvas.addEventListener("pointerdown", start);
+    canvas.addEventListener("pointerup", stop);
+    canvas.addEventListener("pointermove", draw);
+    canvas.addEventListener("pointerleave", stop);
 
-    canvas.addEventListener('mouseup', endDraw);
-    canvas.addEventListener('touchend', endDraw);
-
-    canvas.addEventListener('mousemove', draw);
-    canvas.addEventListener('touchmove', draw, { passive: false });
-
-    function getPos(e) {
-      if (e.touches) {
-        return {
-          x: e.touches[0].clientX - canvas.offsetLeft,
-          y: e.touches[0].clientY - canvas.offsetTop,
-        };
-      }
-      return {
-        x: e.clientX - canvas.offsetLeft,
-        y: e.clientY - canvas.offsetTop,
-      };
-    }
-
-    function startDraw(e) {
-      e.preventDefault();
+    function start(e) {
       painting = true;
-      saveHistory();
       draw(e);
     }
 
-    function endDraw() {
+    function stop() {
       painting = false;
       ctx.beginPath();
     }
 
     function draw(e) {
       if (!painting) return;
-      const pos = getPos(e);
-      ctx.lineWidth = sizePicker.value;
-      ctx.lineCap = 'round';
-      ctx.strokeStyle = colorPicker.value;
-      ctx.lineTo(pos.x, pos.y);
+      const rect = canvas.getBoundingClientRect();
+      ctx.lineWidth = document.getElementById("size").value;
+      ctx.strokeStyle = document.getElementById("color").value;
+      ctx.lineCap = "round";
+      ctx.lineTo(e.clientX - rect.left, e.clientY - rect.top);
       ctx.stroke();
       ctx.beginPath();
-      ctx.moveTo(pos.x, pos.y);
+      ctx.moveTo(e.clientX - rect.left, e.clientY - rect.top);
     }
 
     function clearCanvas() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      history = [];
     }
 
-    function saveHistory() {
-      history.push(canvas.toDataURL());
-      if (history.length > 20) history.shift();
-    }
-
-    function undo() {
-      if (history.length === 0) return;
-      const last = history.pop();
-      const img = new Image();
-      img.onload = () => ctx.drawImage(img, 0, 0);
-      img.src = last;
-    }
-
-    async function sendArtwork() {
-      const title = titleInput.value.trim();
-      if (!title) return alert('Donne un titre à ton œuvre !');
-
-      const image = canvas.toDataURL('image/png');
+    async function sendDrawing() {
+      const title = document.getElementById("title").value;
+      const image = canvas.toDataURL("image/png");
 
       try {
-        const res = await fetch('/submit-artwork', {
+        const res = await fetch('https://ton-bot.onrender.com/api/draw', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title, image }),
+          body: JSON.stringify({ title, image })
         });
-
-        const result = await res.json();
-
-        if (res.ok) {
-          alert('✅ Œuvre envoyée avec succès !');
-          clearCanvas();
-          titleInput.value = '';
-        } else {
-          console.error(result);
-          alert('❌ Erreur lors de l\'envoi : ' + (result.error || 'Inconnue'));
-        }
+        const data = await res.json();
+        alert(data.message || "Envoyé !");
       } catch (err) {
-        console.error(err);
-        alert('❌ Erreur de connexion au serveur.');
+        alert("❌ Erreur de connexion avec le serveur !");
       }
     }
   </script>
