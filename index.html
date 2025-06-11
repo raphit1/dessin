@@ -1,84 +1,128 @@
-<!-- index.html (client) -->
+<!-- index.html -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="UTF-8" />
-  <title>🎨 Dessin</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Crée ton œuvre</title>
   <style>
-    body { font-family: sans-serif; text-align: center; margin: 20px; background: #f4f4f4; }
-    canvas { border: 2px solid #333; touch-action: none; }
-    input, button, select { margin: 10px; padding: 10px; font-size: 16px; }
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      text-align: center;
+      background: #f7f7f7;
+      margin: 0;
+      padding: 2rem;
+    }
+    canvas {
+      border: 2px solid #333;
+      background-color: #fff;
+      touch-action: none;
+    }
+    .controls {
+      margin: 1rem 0;
+    }
+    .controls input[type=range] {
+      width: 150px;
+    }
+    .color-btn {
+      border: none;
+      width: 32px;
+      height: 32px;
+      margin: 0 4px;
+      cursor: pointer;
+    }
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+      margin: 10px;
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
-  <h1>🖌️ Crée ton œuvre</h1>
-  <canvas id="canvas" width="300" height="300"></canvas>
+  <h1>🎨 Crée ton œuvre</h1>
+  <canvas id="canvas" width="350" height="350"></canvas>
+  <div class="controls">
+    <label>Taille:</label>
+    <input type="range" id="size" min="1" max="20" value="5" />
+    <br />
+    <label>Couleur:</label>
+    <button class="color-btn" style="background: black" data-color="#000000"></button>
+    <button class="color-btn" style="background: red" data-color="red"></button>
+    <button class="color-btn" style="background: blue" data-color="blue"></button>
+    <button class="color-btn" style="background: green" data-color="green"></button>
+    <button class="color-btn" style="background: yellow" data-color="yellow"></button>
+  </div>
   <div>
-    <input type="color" id="color" value="#000000" />
-    <select id="size">
-      <option value="2">Fin</option>
-      <option value="5" selected>Moyen</option>
-      <option value="10">Large</option>
-    </select>
-    <br />
-    <input type="text" id="title" placeholder="Titre de l'œuvre" />
-    <br />
-    <button onclick="sendDrawing()">✅ Envoyer</button>
-    <button onclick="clearCanvas()">🧹 Effacer</button>
+    <input type="text" id="title" placeholder="Titre de ton œuvre" style="padding: 8px; width: 80%" />
+  </div>
+  <div>
+    <button onclick="clearCanvas()">🧽 Effacer</button>
+    <button onclick="submitDrawing()">🚀 Envoyer</button>
   </div>
 
   <script>
     const canvas = document.getElementById("canvas");
     const ctx = canvas.getContext("2d");
-    let painting = false;
+    let drawing = false;
+    let color = "black";
+    let size = 5;
 
-    canvas.addEventListener("pointerdown", start);
-    canvas.addEventListener("pointerup", stop);
-    canvas.addEventListener("pointermove", draw);
-    canvas.addEventListener("pointerleave", stop);
+    canvas.addEventListener("mousedown", start);
+    canvas.addEventListener("mouseup", stop);
+    canvas.addEventListener("mousemove", draw);
+    canvas.addEventListener("touchstart", e => start(e.touches[0]));
+    canvas.addEventListener("touchend", stop);
+    canvas.addEventListener("touchmove", e => {
+      e.preventDefault();
+      draw(e.touches[0]);
+    });
 
     function start(e) {
-      painting = true;
+      drawing = true;
       draw(e);
     }
-
     function stop() {
-      painting = false;
+      drawing = false;
       ctx.beginPath();
     }
-
     function draw(e) {
-      if (!painting) return;
+      if (!drawing) return;
       const rect = canvas.getBoundingClientRect();
-      ctx.lineWidth = document.getElementById("size").value;
-      ctx.strokeStyle = document.getElementById("color").value;
+      ctx.lineWidth = size;
       ctx.lineCap = "round";
+      ctx.strokeStyle = color;
       ctx.lineTo(e.clientX - rect.left, e.clientY - rect.top);
       ctx.stroke();
       ctx.beginPath();
       ctx.moveTo(e.clientX - rect.left, e.clientY - rect.top);
     }
 
+    document.querySelectorAll(".color-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        color = btn.getAttribute("data-color");
+      });
+    });
+
+    document.getElementById("size").addEventListener("input", e => {
+      size = e.target.value;
+    });
+
     function clearCanvas() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
     }
 
-    async function sendDrawing() {
-      const title = document.getElementById("title").value;
+    function submitDrawing() {
+      const title = document.getElementById("title").value || "Sans titre";
       const image = canvas.toDataURL("image/png");
 
-      try {
-        const res = await fetch('https://ton-bot.onrender.com/api/draw', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title, image })
-        });
-        const data = await res.json();
-        alert(data.message || "Envoyé !");
-      } catch (err) {
-        alert("❌ Erreur de connexion avec le serveur !");
-      }
+      fetch("/submit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title, image }),
+      })
+        .then(res => res.ok ? alert("✅ Œuvre envoyée !") : alert("❌ Erreur lors de l'envoi."))
+        .catch(() => alert("❌ Erreur réseau ou serveur."));
     }
   </script>
 </body>
