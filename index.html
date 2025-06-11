@@ -1,127 +1,156 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>App de dessin</title>
-<style>
-  body { font-family: Arial, sans-serif; margin: 20px; }
-  #canvas { border:1px solid #ccc; touch-action: none; }
-  .controls { margin-top: 10px; }
-  button { margin-right: 10px; }
-</style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>App de dessin</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    #canvas { border:1px solid #ccc; touch-action: none; }
+    .controls { margin-top: 10px; }
+    button { margin-right: 10px; }
+  </style>
 </head>
 <body>
-<h2>🎨 Dessine ton œuvre</h2>
-<canvas id="canvas" width="400" height="300"></canvas>
+  <h2>🎨 Dessine ton œuvre</h2>
+  <canvas id="canvas" width="400" height="300"></canvas>
 
-<div class="controls">
-  <label for="color">Couleur :</label>
-  <input type="color" id="color" value="#000000" />
-  <label for="size">Taille :</label>
-  <input type="range" id="size" min="1" max="10" value="3" />
-</div>
+  <div class="controls">
+    <label for="color">Couleur :</label>
+    <input type="color" id="color" value="#000000" />
+    <label for="size">Taille :</label>
+    <input type="range" id="size" min="1" max="10" value="3" />
+  </div>
 
-<div class="controls">
-  <input type="text" id="title" placeholder="Titre de l'œuvre" />
-  <button id="clear">Effacer</button>
-  <button id="submit">Valider & Envoyer</button>
-</div>
+  <div class="controls">
+    <input type="text" id="title" placeholder="Titre de l'œuvre" />
+    <button id="undo">↩️ Retour</button>
+    <button id="clear">🧹 Effacer tout</button>
+    <button id="submit">✅ Valider & Envoyer</button>
+  </div>
 
-<div id="message" style="margin-top:10px; color: red;"></div>
+  <div id="message" style="margin-top:10px; color: red;"></div>
 
-<script>
-(() => {
-  const canvas = document.getElementById('canvas');
-  const ctx = canvas.getContext('2d');
-  const colorPicker = document.getElementById('color');
-  const sizePicker = document.getElementById('size');
-  const clearBtn = document.getElementById('clear');
-  const submitBtn = document.getElementById('submit');
-  const titleInput = document.getElementById('title');
-  const messageDiv = document.getElementById('message');
+  <script>
+    (() => {
+      const canvas = document.getElementById('canvas');
+      const ctx = canvas.getContext('2d');
+      const colorPicker = document.getElementById('color');
+      const sizePicker = document.getElementById('size');
+      const clearBtn = document.getElementById('clear');
+      const undoBtn = document.getElementById('undo');
+      const submitBtn = document.getElementById('submit');
+      const titleInput = document.getElementById('title');
+      const messageDiv = document.getElementById('message');
 
-  let drawing = false;
-  let lastX = 0;
-  let lastY = 0;
+      let drawing = false;
+      let lastX = 0;
+      let lastY = 0;
+      const history = [];
 
-  // Setup canvas drawing handlers
-  function startDraw(e) {
-    drawing = true;
-    [lastX, lastY] = getXY(e);
-  }
-  function endDraw() {
-    drawing = false;
-  }
-  function draw(e) {
-    if (!drawing) return;
-    const [x, y] = getXY(e);
-    ctx.strokeStyle = colorPicker.value;
-    ctx.lineWidth = sizePicker.value;
-    ctx.lineCap = 'round';
-
-    ctx.beginPath();
-    ctx.moveTo(lastX, lastY);
-    ctx.lineTo(x, y);
-    ctx.stroke();
-    [lastX, lastY] = [x, y];
-  }
-  function getXY(e) {
-    if (e.touches) {
-      const rect = canvas.getBoundingClientRect();
-      return [
-        e.touches[0].clientX - rect.left,
-        e.touches[0].clientY - rect.top
-      ];
-    } else {
-      return [e.offsetX, e.offsetY];
-    }
-  }
-
-  canvas.addEventListener('mousedown', startDraw);
-  canvas.addEventListener('mouseup', endDraw);
-  canvas.addEventListener('mouseout', endDraw);
-  canvas.addEventListener('mousemove', draw);
-  canvas.addEventListener('touchstart', startDraw, {passive:false});
-  canvas.addEventListener('touchend', endDraw);
-  canvas.addEventListener('touchcancel', endDraw);
-  canvas.addEventListener('touchmove', e => { e.preventDefault(); draw(e); }, {passive:false});
-
-  clearBtn.onclick = () => {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    messageDiv.textContent = '';
-  };
-
-  submitBtn.onclick = async () => {
-    const title = titleInput.value.trim();
-    if (!title) {
-      messageDiv.textContent = '⚠️ Veuillez entrer un titre.';
-      return;
-    }
-    const image = canvas.toDataURL('image/png');
-
-    try {
-      messageDiv.textContent = '⏳ Envoi en cours...';
-      const response = await fetch('/submit-artwork', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image, title })
-      });
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        messageDiv.textContent = `❌ Erreur: ${errorData.error || response.statusText}`;
-        return;
+      function saveState() {
+        history.push(canvas.toDataURL());
+        if (history.length > 50) history.shift(); // limite mémoire
       }
-      const data = await response.json();
-      messageDiv.style.color = 'green';
-      messageDiv.textContent = data.status || '✅ Envoi réussi !';
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      titleInput.value = '';
-    } catch (err) {
-      messageDiv.textContent = '❌ Erreur réseau ou serveur.';
-    }
-  };
-})();
-</script>
+
+      function startDraw(e) {
+        drawing = true;
+        [lastX, lastY] = getXY(e);
+        saveState();
+      }
+
+      function endDraw() {
+        drawing = false;
+      }
+
+      function draw(e) {
+        if (!drawing) return;
+        const [x, y] = getXY(e);
+        ctx.strokeStyle = colorPicker.value;
+        ctx.lineWidth = sizePicker.value;
+        ctx.lineCap = 'round';
+
+        ctx.beginPath();
+        ctx.moveTo(lastX, lastY);
+        ctx.lineTo(x, y);
+        ctx.stroke();
+        [lastX, lastY] = [x, y];
+      }
+
+      function getXY(e) {
+        if (e.touches) {
+          const rect = canvas.getBoundingClientRect();
+          return [
+            e.touches[0].clientX - rect.left,
+            e.touches[0].clientY - rect.top
+          ];
+        } else {
+          return [e.offsetX, e.offsetY];
+        }
+      }
+
+      canvas.addEventListener('mousedown', startDraw);
+      canvas.addEventListener('mouseup', endDraw);
+      canvas.addEventListener('mouseout', endDraw);
+      canvas.addEventListener('mousemove', draw);
+      canvas.addEventListener('touchstart', startDraw, {passive:false});
+      canvas.addEventListener('touchend', endDraw);
+      canvas.addEventListener('touchcancel', endDraw);
+      canvas.addEventListener('touchmove', e => { e.preventDefault(); draw(e); }, {passive:false});
+
+      clearBtn.onclick = () => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        messageDiv.textContent = '';
+        history.length = 0;
+      };
+
+      undoBtn.onclick = () => {
+        if (history.length > 0) {
+          const img = new Image();
+          img.onload = () => {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(img, 0, 0);
+          };
+          img.src = history.pop();
+        } else {
+          messageDiv.textContent = '❗ Rien à annuler';
+        }
+      };
+
+      submitBtn.onclick = async () => {
+        const title = titleInput.value.trim();
+        if (!title) {
+          messageDiv.textContent = '⚠️ Veuillez entrer un titre.';
+          return;
+        }
+
+        const image = canvas.toDataURL('image/png');
+        try {
+          messageDiv.style.color = 'black';
+          messageDiv.textContent = '⏳ Envoi en cours...';
+
+          const response = await fetch('/submit-artwork', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ image, title })
+          });
+
+          const data = await response.json();
+          if (!response.ok) {
+            messageDiv.textContent = `❌ Erreur : ${data.error || 'inconnue'}`;
+            return;
+          }
+
+          messageDiv.style.color = 'green';
+          messageDiv.textContent = data.status || '✅ Œuvre envoyée !';
+          titleInput.value = '';
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          history.length = 0;
+        } catch (err) {
+          messageDiv.textContent = '❌ Erreur réseau ou serveur.';
+        }
+      };
+    })();
+  </script>
 </body>
 </html>
