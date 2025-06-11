@@ -1,129 +1,172 @@
-<!-- index.html -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Crée ton œuvre</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dessiner ton œuvre</title>
   <style>
     body {
-      font-family: 'Segoe UI', sans-serif;
+      background: #f0f0f0;
+      font-family: Arial, sans-serif;
+      padding: 1rem;
       text-align: center;
-      background: #f7f7f7;
-      margin: 0;
-      padding: 2rem;
     }
     canvas {
       border: 2px solid #333;
       background-color: #fff;
       touch-action: none;
     }
-    .controls {
-      margin: 1rem 0;
+    .tools {
+      margin-top: 1rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: center;
     }
-    .controls input[type=range] {
-      width: 150px;
+    .tools input[type="color"],
+    .tools input[type="range"] {
+      vertical-align: middle;
     }
-    .color-btn {
-      border: none;
-      width: 32px;
-      height: 32px;
-      margin: 0 4px;
-      cursor: pointer;
+    #title {
+      width: 80%;
+      padding: 0.5rem;
+      margin-top: 1rem;
+      font-size: 1rem;
     }
     button {
-      padding: 10px 20px;
-      font-size: 16px;
-      margin: 10px;
+      padding: 0.5rem 1rem;
+      font-size: 1rem;
       cursor: pointer;
+      border: none;
+      border-radius: 6px;
+      background: #4a90e2;
+      color: white;
+    }
+    button:hover {
+      background: #357ac9;
     }
   </style>
 </head>
 <body>
-  <h1>🎨 Crée ton œuvre</h1>
-  <canvas id="canvas" width="350" height="350"></canvas>
-  <div class="controls">
-    <label>Taille:</label>
-    <input type="range" id="size" min="1" max="20" value="5" />
-    <br />
-    <label>Couleur:</label>
-    <button class="color-btn" style="background: black" data-color="#000000"></button>
-    <button class="color-btn" style="background: red" data-color="red"></button>
-    <button class="color-btn" style="background: blue" data-color="blue"></button>
-    <button class="color-btn" style="background: green" data-color="green"></button>
-    <button class="color-btn" style="background: yellow" data-color="yellow"></button>
+
+  <h1>🖌️ Crée ton œuvre</h1>
+
+  <input type="text" id="title" placeholder="Titre de l'œuvre (optionnel)">
+
+  <div class="tools">
+    <label>Couleur:
+      <input type="color" id="colorPicker" value="#000000">
+    </label>
+
+    <label>Taille:
+      <input type="range" id="sizePicker" min="1" max="50" value="5">
+    </label>
+
+    <button id="undoBtn">↩️ Annuler</button>
+    <button id="clearBtn">🧽 Effacer</button>
+    <button id="screenshotBtn">📸 Screenshot</button>
   </div>
-  <div>
-    <input type="text" id="title" placeholder="Titre de ton œuvre" style="padding: 8px; width: 80%" />
-  </div>
-  <div>
-    <button onclick="clearCanvas()">🧽 Effacer</button>
-    <button onclick="submitDrawing()">🚀 Envoyer</button>
-  </div>
+
+  <canvas id="drawCanvas" width="350" height="350"></canvas>
 
   <script>
-    const canvas = document.getElementById("canvas");
+    const canvas = document.getElementById("drawCanvas");
     const ctx = canvas.getContext("2d");
-    let drawing = false;
-    let color = "black";
-    let size = 5;
+    const colorPicker = document.getElementById("colorPicker");
+    const sizePicker = document.getElementById("sizePicker");
+    const clearBtn = document.getElementById("clearBtn");
+    const undoBtn = document.getElementById("undoBtn");
+    const screenshotBtn = document.getElementById("screenshotBtn");
+    const titleInput = document.getElementById("title");
 
-    canvas.addEventListener("mousedown", start);
-    canvas.addEventListener("mouseup", stop);
-    canvas.addEventListener("mousemove", draw);
-    canvas.addEventListener("touchstart", e => start(e.touches[0]));
-    canvas.addEventListener("touchend", stop);
-    canvas.addEventListener("touchmove", e => {
-      e.preventDefault();
-      draw(e.touches[0]);
-    });
+    let painting = false;
+    let paths = [];
+    let currentPath = [];
 
-    function start(e) {
-      drawing = true;
+    function startDraw(e) {
+      painting = true;
+      currentPath = [];
+      ctx.beginPath();
       draw(e);
     }
-    function stop() {
-      drawing = false;
-      ctx.beginPath();
-    }
+
     function draw(e) {
-      if (!drawing) return;
+      if (!painting) return;
       const rect = canvas.getBoundingClientRect();
-      ctx.lineWidth = size;
+      const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+      const y = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
+
+      ctx.lineWidth = sizePicker.value;
       ctx.lineCap = "round";
-      ctx.strokeStyle = color;
-      ctx.lineTo(e.clientX - rect.left, e.clientY - rect.top);
+      ctx.strokeStyle = colorPicker.value;
+
+      ctx.lineTo(x, y);
       ctx.stroke();
       ctx.beginPath();
-      ctx.moveTo(e.clientX - rect.left, e.clientY - rect.top);
+      ctx.moveTo(x, y);
+
+      currentPath.push({ x, y, color: ctx.strokeStyle, size: ctx.lineWidth });
     }
 
-    document.querySelectorAll(".color-btn").forEach(btn => {
-      btn.addEventListener("click", () => {
-        color = btn.getAttribute("data-color");
-      });
-    });
+    function endDraw() {
+      if (!painting) return;
+      painting = false;
+      ctx.beginPath();
+      paths.push([...currentPath]);
+    }
 
-    document.getElementById("size").addEventListener("input", e => {
-      size = e.target.value;
-    });
+    function undoLast() {
+      paths.pop();
+      redrawCanvas();
+    }
+
+    function redrawCanvas() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      for (const path of paths) {
+        ctx.beginPath();
+        for (let i = 0; i < path.length; i++) {
+          const point = path[i];
+          ctx.lineWidth = point.size;
+          ctx.strokeStyle = point.color;
+          if (i === 0) {
+            ctx.moveTo(point.x, point.y);
+          } else {
+            ctx.lineTo(point.x, point.y);
+          }
+          ctx.stroke();
+        }
+      }
+      ctx.beginPath();
+    }
 
     function clearCanvas() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+      paths = [];
     }
 
-    function submitDrawing() {
-      const title = document.getElementById("title").value || "Sans titre";
-      const image = canvas.toDataURL("image/png");
-
-      fetch("/submit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, image }),
-      })
-        .then(res => res.ok ? alert("✅ Œuvre envoyée !") : alert("❌ Erreur lors de l'envoi."))
-        .catch(() => alert("❌ Erreur réseau ou serveur."));
+    function takeScreenshot() {
+      const title = titleInput.value.trim();
+      const filename = title ? `${title}.png` : "dessin.png";
+      const link = document.createElement("a");
+      link.download = filename;
+      link.href = canvas.toDataURL("image/png");
+      link.click();
     }
+
+    // Event listeners
+    canvas.addEventListener("mousedown", startDraw);
+    canvas.addEventListener("mousemove", draw);
+    canvas.addEventListener("mouseup", endDraw);
+    canvas.addEventListener("mouseout", endDraw);
+
+    canvas.addEventListener("touchstart", startDraw);
+    canvas.addEventListener("touchmove", draw);
+    canvas.addEventListener("touchend", endDraw);
+
+    clearBtn.addEventListener("click", clearCanvas);
+    undoBtn.addEventListener("click", undoLast);
+    screenshotBtn.addEventListener("click", takeScreenshot);
   </script>
+
 </body>
 </html>
