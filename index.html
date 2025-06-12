@@ -18,7 +18,7 @@
   canvas {
     border: 2px solid #333;
     background-color: #fff;
-    touch-action: none; /* important pour gérer touch manuel */
+    touch-action: none;
     cursor: crosshair;
     display: block;
     margin: auto;
@@ -42,6 +42,9 @@
     margin-top: 1rem;
     font-size: 1rem;
   }
+  button, label {
+    user-select: none;
+  }
   button {
     padding: 0.5rem 1rem;
     font-size: 1rem;
@@ -50,13 +53,15 @@
     border-radius: 6px;
     background: #4a90e2;
     color: white;
-    user-select: none;
   }
   button:hover {
     background: #357ac9;
   }
-  label {
-    user-select: none;
+  #modeToggle {
+    background: #ff9800;
+  }
+  #modeToggle.active {
+    background: #388e3c;
   }
 </style>
 </head>
@@ -66,6 +71,10 @@
   <input type="text" id="title" placeholder="Titre de l'œuvre (optionnel)" />
 
   <div class="tools">
+    <label>Mode :
+      <button id="modeToggle" class="active">Dessin</button>
+    </label>
+
     <label>Couleur:
       <input type="color" id="colorPicker" value="#000000" />
     </label>
@@ -113,6 +122,7 @@
   const removeBgBtn = document.getElementById("removeBgBtn");
   const blurBrush = document.getElementById("blurBrush");
   const blurLevel = document.getElementById("blurLevel");
+  const modeToggle = document.getElementById("modeToggle");
 
   let painting = false;
   let paths = [];
@@ -121,17 +131,55 @@
   let bgColor = "#ffffff";
   let bgImage = null;
 
-  // Variables zoom & pan
+  // Zoom & pan
   let scale = 1;
   let offsetX = 0;
   let offsetY = 0;
 
-  // Pour pinch zoom
+  // Pinch zoom vars
   let lastDist = null;
   let lastMidpoint = null;
   let isPanning = false;
 
-  // Convertit position écran -> position dans canvas avec zoom + pan
+  // Mode dessin ou navigation (zoom/pan)
+  // true = dessin, false = navigation
+  let drawingMode = true;
+
+  // Limites du canvas (pour clamp offset)
+  function clampOffsets() {
+    // La taille effective après zoom
+    const widthScaled = canvas.width * scale;
+    const heightScaled = canvas.height * scale;
+
+    // Limites pour ne pas déplacer hors cadre
+    // Laisse l'image toujours visible dans le canvas
+
+    // Offset min/max autorisés selon zoom (centré)
+    const minX = Math.min(0, canvas.width - widthScaled);
+    const maxX = Math.max(0, canvas.width - widthScaled);
+
+    const minY = Math.min(0, canvas.height - heightScaled);
+    const maxY = Math.max(0, canvas.height - heightScaled);
+
+    if (offsetX > 0) offsetX = 0;
+    if (offsetY > 0) offsetY = 0;
+
+    if (widthScaled > canvas.width) {
+      if (offsetX > 0) offsetX = 0;
+      if (offsetX < canvas.width - widthScaled) offsetX = canvas.width - widthScaled;
+    } else {
+      offsetX = 0; // recentrer si zoom trop petit
+    }
+
+    if (heightScaled > canvas.height) {
+      if (offsetY > 0) offsetY = 0;
+      if (offsetY < canvas.height - heightScaled) offsetY = canvas.height - heightScaled;
+    } else {
+      offsetY = 0;
+    }
+  }
+
+  // Convertir coord écran en coord canvas (avec zoom/pan)
   function screenToCanvas(x, y) {
     return {
       x: (x - offsetX) / scale,
@@ -139,14 +187,14 @@
     };
   }
 
-  // Distance entre 2 doigts
+  // Distance entre deux doigts
   function getDistance(touches) {
     const dx = touches[0].clientX - touches[1].clientX;
     const dy = touches[0].clientY - touches[1].clientY;
     return Math.hypot(dx, dy);
   }
 
-  // Milieu entre 2 doigts
+  // Point milieu entre deux doigts
   function getMidpoint(touches) {
     return {
       x: (touches[0].clientX + touches[1].clientX) / 2,
@@ -195,12 +243,10 @@
     ctx.beginPath();
   }
 
-  // Pour gérer l'événement dessin
+  // Commencer à dessiner
   function startDraw(e) {
-    if (e.touches && e.touches.length > 1) {
-      // Plus d’un doigt => pas dessin
-      return;
-    }
+    if (!drawingMode) return; // interdit si on est en mode navigation
+    if (e.touches && e.touches.length > 1) return; // ignore multi-touch dessin
     e.preventDefault();
     painting = true;
     currentPath = [];
@@ -208,27 +254,31 @@
     draw(e);
   }
 
+  // Dessiner
   function draw(e) {
     if (!painting) return;
     e.preventDefault();
-    let x, y;
+
+    let clientX, clientY;
     if (e.touches) {
-      // Touch event with one finger only
-      x = e.touches[0].clientX;
-      y = e.touches[0].clientY;
+      clientX = e.touches[0].clientX;
+      clientY = e.touches[0].clientY;
     } else {
-      x = e.clientX;
-      y = e.clientY;
+      clientX = e.clientX;
+      clientY = e.clientY;
     }
-    const pos = screenToCanvas(x, y);
+
+    const rect = canvas.getBoundingClientRect();
+    // Convertir la position écran en coord canvas (avec zoom/pan)
+    const pos = screenToCanvas(clientX - rect.left, clientY - rect.top);
 
     ctx.lineWidth = sizePicker.value;
     ctx.lineCap = "round";
     ctx.strokeStyle = colorPicker.value;
 
     if (blurBrush.checked) {
-      ctx.shadowBlur = parseInt(blurLevel.value);
-      ctx.shadowColor = colorPicker.value;
+      ctx.shadowBlur = (blurLevel.value / 100) * 20; // Ajuste le flou max 20px
+      ctx.shadowColor = ctx.strokeStyle;
     } else {
       ctx.shadowBlur = 0;
       ctx.shadowColor = "transparent";
@@ -245,182 +295,222 @@
       color: ctx.strokeStyle,
       size: ctx.lineWidth,
       blur: blurBrush.checked,
-      blurAmount: parseInt(blurLevel.value)
+      blurAmount: ctx.shadowBlur
     });
   }
 
+  // Fin de dessin
   function endDraw(e) {
     if (!painting) return;
-    e.preventDefault();
     painting = false;
     ctx.beginPath();
-    if(currentPath.length) paths.push([...currentPath]);
+    if (currentPath.length) {
+      paths.push([...currentPath]);
+    }
   }
 
+  // Undo dernier trait
   function undoLast() {
     paths.pop();
     redrawCanvas();
   }
 
+  // Clear tout
   function clearCanvas() {
     paths = [];
     redrawCanvas();
   }
 
-  // Touch handling for pinch zoom and pan
+  // Gestion du mode toggle
+  modeToggle.addEventListener("click", () => {
+    drawingMode = !drawingMode;
+    if (drawingMode) {
+      modeToggle.textContent = "Dessin";
+      modeToggle.classList.add("active");
+      canvas.style.cursor = "crosshair";
+    } else {
+      modeToggle.textContent = "Navigation";
+      modeToggle.classList.remove("active");
+      canvas.style.cursor = "grab";
+      painting = false;
+    }
+  });
+
+  // Gestion fond coloré et image
+  bgColorPicker.addEventListener("input", (e) => {
+    bgColor = e.target.value;
+    redrawCanvas();
+  });
+
+  bgImagePicker.addEventListener("change", (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const img = new Image();
+    img.onload = () => {
+      bgImage = img;
+      redrawCanvas();
+    };
+    img.src = URL.createObjectURL(file);
+  });
+
+  removeBgBtn.addEventListener("click", () => {
+    bgImage = null;
+    bgImagePicker.value = null;
+    redrawCanvas();
+  });
+
+  // Zoom et déplacement tactile (2 doigts) en mode navigation uniquement
   canvas.addEventListener("touchstart", (e) => {
-    if (e.touches.length === 2) {
+    if (!drawingMode && e.touches.length === 2) {
       e.preventDefault();
       lastDist = getDistance(e.touches);
       lastMidpoint = getMidpoint(e.touches);
       isPanning = true;
-    } else if (e.touches.length === 1) {
+    } else if (drawingMode && e.touches.length === 1) {
       startDraw(e);
     }
   }, { passive: false });
 
   canvas.addEventListener("touchmove", (e) => {
-    if (isPanning && e.touches.length === 2) {
+    if (!drawingMode && e.touches.length === 2 && isPanning) {
       e.preventDefault();
+      const dist = getDistance(e.touches);
+      const midpoint = getMidpoint(e.touches);
 
-      const newDist = getDistance(e.touches);
-      const newMidpoint = getMidpoint(e.touches);
+      // Calculer facteur de zoom
+      const zoomFactor = dist / lastDist;
+      let newScale = scale * zoomFactor;
 
-      // Zoom factor
-      const scaleChange = newDist / lastDist;
+      // Clamp zoom entre 1 et 5
+      newScale = Math.min(Math.max(newScale, 1), 5);
 
-      // Calcul du zoom centré sur le point médian
-      // On applique la formule de zoom + translation pour garder le point fixe
-      offsetX = newMidpoint.x - scaleChange * (newMidpoint.x - offsetX);
-      offsetY = newMidpoint.y - scaleChange * (newMidpoint.y - offsetY);
+      // Calcul offset pour garder le zoom centré sur le midpoint
+      // position du midpoint avant zoom (dans canvas coords)
+      const rect = canvas.getBoundingClientRect();
+      const midCanvasBefore = screenToCanvas(midpoint.x - rect.left, midpoint.y - rect.top);
 
-      scale *= scaleChange;
-      if (scale < 0.5) scale = 0.5;
-      if (scale > 5) scale = 5;
+      // Mise à jour scale
+      scale = newScale;
 
-      lastDist = newDist;
-      lastMidpoint = newMidpoint;
+      clampOffsets();
+
+      // Position du midpoint après zoom
+      const midCanvasAfter = screenToCanvas(midpoint.x - rect.left, midpoint.y - rect.top);
+
+      // Ajuster offset pour compenser le déplacement
+      offsetX += (midCanvasAfter.x - midCanvasBefore.x) * scale;
+      offsetY += (midCanvasAfter.y - midCanvasBefore.y) * scale;
+
+      clampOffsets();
+
+      // Pan avec déplacement du midpoint
+      offsetX += midpoint.x - lastMidpoint.x;
+      offsetY += midpoint.y - lastMidpoint.y;
+
+      clampOffsets();
+
+      lastDist = dist;
+      lastMidpoint = midpoint;
 
       redrawCanvas();
-    } else if (painting && e.touches.length === 1) {
+
+    } else if (drawingMode && e.touches.length === 1) {
       draw(e);
     }
   }, { passive: false });
 
   canvas.addEventListener("touchend", (e) => {
-    if (e.touches.length < 2) {
+    if (!drawingMode && e.touches.length < 2) {
       isPanning = false;
       lastDist = null;
       lastMidpoint = null;
     }
-    if (painting && e.touches.length === 0) {
+    if (drawingMode && e.touches.length === 0) {
       endDraw(e);
     }
-  }, { passive: false });
+  });
 
-  // Souris (desktop)
+  // Souris: dessiner ou rien si navigation (pas zoom souris pour l’instant)
   canvas.addEventListener("mousedown", (e) => {
-    startDraw(e);
+    if (drawingMode) {
+      startDraw(e);
+    }
   });
   canvas.addEventListener("mousemove", (e) => {
-    draw(e);
+    if (drawingMode) {
+      draw(e);
+    }
   });
   canvas.addEventListener("mouseup", (e) => {
-    endDraw(e);
+    if (drawingMode) {
+      endDraw(e);
+    }
   });
   canvas.addEventListener("mouseout", (e) => {
-  endDraw(e);
-});
-
-// Gestion fond coloré et image
-bgColorPicker.addEventListener("input", (e) => {
-  bgColor = e.target.value;
-  redrawCanvas();
-});
-
-bgImagePicker.addEventListener("change", (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-  const img = new Image();
-  img.onload = () => {
-    bgImage = img;
-    redrawCanvas();
-  };
-  img.src = URL.createObjectURL(file);
-});
-
-removeBgBtn.addEventListener("click", () => {
-  bgImage = null;
-  bgImagePicker.value = null;
-  redrawCanvas();
-});
-
-// Undo, clear, screenshot
-undoBtn.addEventListener("click", () => {
-  undoLast();
-});
-
-clearBtn.addEventListener("click", () => {
-  clearCanvas();
-});
-
-screenshotBtn.addEventListener("click", () => {
-  const title = titleInput.value.trim();
-  const filename = title ? `${title}.png` : "dessin.png";
-
-  // Canvas temporaire
-  const tempCanvas = document.createElement("canvas");
-  const tempCtx = tempCanvas.getContext("2d");
-  tempCanvas.width = canvas.width;
-  tempCanvas.height = canvas.height;
-
-  // Fond blanc (ou couleur choisie)
-  tempCtx.fillStyle = bgColor;
-  tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
-
-  // Image de fond
-  if (bgImage) {
-    tempCtx.drawImage(bgImage, 0, 0, tempCanvas.width, tempCanvas.height);
-  }
-
-  // Appliquer transformations zoom + pan avant de dessiner les paths
-  tempCtx.save();
-  tempCtx.translate(offsetX, offsetY);
-  tempCtx.scale(scale, scale);
-
-  // Dessiner tous les paths
-  for (const path of paths) {
-    tempCtx.beginPath();
-    for (let i = 0; i < path.length; i++) {
-      const point = path[i];
-      tempCtx.lineWidth = point.size;
-      tempCtx.strokeStyle = point.color;
-      if (point.blur) {
-        tempCtx.shadowBlur = point.blurAmount;
-        tempCtx.shadowColor = point.color;
-      } else {
-        tempCtx.shadowBlur = 0;
-        tempCtx.shadowColor = "transparent";
-      }
-      if (i === 0) {
-        tempCtx.moveTo(point.x, point.y);
-      } else {
-        tempCtx.lineTo(point.x, point.y);
-      }
-      tempCtx.stroke();
+    if (drawingMode) {
+      endDraw(e);
     }
-  }
-  tempCtx.restore();
+  });
 
-  // Télécharger l’image
-  const link = document.createElement("a");
-  link.download = filename;
-  link.href = tempCanvas.toDataURL("image/png");
-  link.click();
-});
+  // Téléchargement
+  screenshotBtn.addEventListener("click", () => {
+    const title = titleInput.value.trim();
+    const filename = title ? `${title}.png` : "dessin.png";
 
-// Initial draw
-redrawCanvas();
+    const tempCanvas = document.createElement("canvas");
+    const tempCtx = tempCanvas.getContext("2d");
+    tempCanvas.width = canvas.width;
+    tempCanvas.height = canvas.height;
+
+    // Fond
+    tempCtx.fillStyle = bgColor;
+    tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+
+    // Image de fond
+    if (bgImage) {
+      tempCtx.drawImage(bgImage, 0, 0, tempCanvas.width, tempCanvas.height);
+    }
+
+    tempCtx.save();
+    tempCtx.translate(offsetX, offsetY);
+    tempCtx.scale(scale, scale);
+
+    for (const path of paths) {
+      tempCtx.beginPath();
+      for (let i = 0; i < path.length; i++) {
+        const point = path[i];
+        tempCtx.lineWidth = point.size;
+        tempCtx.strokeStyle = point.color;
+        if (point.blur) {
+          tempCtx.shadowBlur = point.blurAmount;
+          tempCtx.shadowColor = point.color;
+        } else {
+          tempCtx.shadowBlur = 0;
+          tempCtx.shadowColor = "transparent";
+        }
+        if (i === 0) {
+          tempCtx.moveTo(point.x, point.y);
+        } else {
+          tempCtx.lineTo(point.x, point.y);
+        }
+        tempCtx.stroke();
+      }
+    }
+
+    tempCtx.restore();
+
+    const link = document.createElement("a");
+    link.download = filename;
+    link.href = tempCanvas.toDataURL("image/png");
+    link.click();
+  });
+
+  // Effacer et Undo
+  clearBtn.addEventListener("click", clearCanvas);
+  undoBtn.addEventListener("click", undoLast);
+
+  // Initial draw
+  redrawCanvas();
 </script>
 
 </body>
