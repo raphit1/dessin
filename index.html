@@ -57,10 +57,10 @@
   button:hover {
     background: #357ac9;
   }
-  #modeToggle.active {
-    background: #388e3c;
+  #modeToggle {
+    background: #ff9800;
   }
-  #eraserToggle.active {
+  #modeToggle.active {
     background: #388e3c;
   }
 </style>
@@ -71,9 +71,9 @@
   <input type="text" id="title" placeholder="Titre de l'œuvre (optionnel)" />
 
   <div class="tools">
-    <label>Mode :</label>
-    <button id="modeToggle" class="active">Dessin</button>
-    <button id="eraserToggle">Gomme</button>
+    <label>Mode :
+      <button id="modeToggle" class="active">Dessin</button>
+    </label>
 
     <label>Couleur:
       <input type="color" id="colorPicker" value="#000000" />
@@ -81,6 +81,14 @@
 
     <label>Taille:
       <input type="range" id="sizePicker" min="1" max="50" value="5" />
+    </label>
+
+    <label>
+      <input type="checkbox" id="eraserToggle" /> Gomme
+    </label>
+
+    <label>Taille gomme:
+      <input type="range" id="eraserSize" min="5" max="100" value="30" />
     </label>
 
     <label>Fond:
@@ -100,334 +108,138 @@
   <canvas id="drawCanvas" width="350" height="350"></canvas>
 
 <script>
-  const canvas = document.getElementById("drawCanvas");
-  const ctx = canvas.getContext("2d");
+// ... tous tes autres scripts (inchangés sauf dessous)
 
-  const colorPicker = document.getElementById("colorPicker");
-  const sizePicker = document.getElementById("sizePicker");
-  const clearBtn = document.getElementById("clearBtn");
-  const undoBtn = document.getElementById("undoBtn");
-  const screenshotBtn = document.getElementById("screenshotBtn");
-  const titleInput = document.getElementById("title");
-  const bgColorPicker = document.getElementById("bgColorPicker");
-  const bgImagePicker = document.getElementById("bgImagePicker");
-  const removeBgBtn = document.getElementById("removeBgBtn");
-  const modeToggle = document.getElementById("modeToggle");
-  const eraserToggle = document.getElementById("eraserToggle");
+const eraserToggle = document.getElementById("eraserToggle");
+const eraserSize = document.getElementById("eraserSize");
 
-  let painting = false;
-  let paths = [];
-  let currentPath = [];
+function draw(e) {
+  if (!painting) return;
+  e.preventDefault();
 
-  let bgColor = "#ffffff";
-  let bgImage = null;
-
-  // Zoom & pan variables (pour la suite, même si non modifié ici)
-  let scale = 1;
-  let offsetX = 0;
-  let offsetY = 0;
-
-  // Mode dessin ou gomme
-  // true = dessin, false = gomme
-  let drawingMode = true;
-  let eraserMode = false;
-
-  // Limites du canvas (pour clamp offset)
-  function clampOffsets() {
-    const widthScaled = canvas.width * scale;
-    const heightScaled = canvas.height * scale;
-
-    const minX = Math.min(0, canvas.width - widthScaled);
-    const maxX = Math.max(0, canvas.width - widthScaled);
-
-    const minY = Math.min(0, canvas.height - heightScaled);
-    const maxY = Math.max(0, canvas.height - heightScaled);
-
-    if (offsetX > 0) offsetX = 0;
-    if (offsetY > 0) offsetY = 0;
-
-    if (widthScaled > canvas.width) {
-      if (offsetX > 0) offsetX = 0;
-      if (offsetX < canvas.width - widthScaled) offsetX = canvas.width - widthScaled;
-    } else {
-      offsetX = 0;
-    }
-
-    if (heightScaled > canvas.height) {
-      if (offsetY > 0) offsetY = 0;
-      if (offsetY < canvas.height - heightScaled) offsetY = canvas.height - heightScaled;
-    } else {
-      offsetY = 0;
-    }
+  let clientX, clientY;
+  if (e.touches) {
+    clientX = e.touches[0].clientX;
+    clientY = e.touches[0].clientY;
+  } else {
+    clientX = e.clientX;
+    clientY = e.clientY;
   }
 
-  function screenToCanvas(x, y) {
-    return {
-      x: (x - offsetX) / scale,
-      y: (y - offsetY) / scale
-    };
+  const rect = canvas.getBoundingClientRect();
+  const pos = screenToCanvas(clientX - rect.left, clientY - rect.top);
+
+  const isEraser = eraserToggle.checked;
+
+  ctx.lineCap = "round";
+
+  if (isEraser) {
+    ctx.globalCompositeOperation = "destination-out";
+    ctx.lineWidth = eraserSize.value;
+    ctx.strokeStyle = "rgba(0,0,0,1)";
+  } else {
+    ctx.globalCompositeOperation = "source-over";
+    ctx.lineWidth = sizePicker.value;
+    ctx.strokeStyle = colorPicker.value;
   }
 
-  function drawBackground(ctxTarget) {
-    ctxTarget.fillStyle = bgColor;
-    ctxTarget.fillRect(0, 0, canvas.width, canvas.height);
-    if (bgImage) {
-      ctxTarget.drawImage(bgImage, 0, 0, canvas.width, canvas.height);
-    }
-  }
+  ctx.shadowBlur = 0;
+  ctx.shadowColor = "transparent";
 
-  function redrawCanvas() {
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.lineTo(pos.x, pos.y);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(pos.x, pos.y);
 
-    ctx.translate(offsetX, offsetY);
-    ctx.scale(scale, scale);
+  currentPath.push({
+    x: pos.x,
+    y: pos.y,
+    color: ctx.strokeStyle,
+    size: ctx.lineWidth,
+    blur: false,
+    blurAmount: 0,
+    erase: isEraser
+  });
+}
 
-    drawBackground(ctx);
+function redrawCanvas() {
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.translate(offsetX, offsetY);
+  ctx.scale(scale, scale);
 
-    for (const path of paths) {
-      if (path.length === 0) continue;
-      ctx.beginPath();
-      for (let i = 0; i < path.length; i++) {
-        const point = path[i];
-        ctx.lineWidth = point.size;
-        ctx.strokeStyle = point.color;
-        if (i === 0) {
-          ctx.moveTo(point.x, point.y);
-        } else {
-          ctx.lineTo(point.x, point.y);
-        }
+  drawBackground(ctx);
+
+  for (const path of paths) {
+    ctx.beginPath();
+    for (let i = 0; i < path.length; i++) {
+      const point = path[i];
+      ctx.lineWidth = point.size;
+      ctx.strokeStyle = point.color;
+      ctx.shadowBlur = 0;
+      ctx.shadowColor = "transparent";
+      ctx.globalCompositeOperation = point.erase ? "destination-out" : "source-over";
+
+      if (i === 0) {
+        ctx.moveTo(point.x, point.y);
+      } else {
+        ctx.lineTo(point.x, point.y);
       }
       ctx.stroke();
     }
-    ctx.beginPath();
+  }
+  ctx.globalCompositeOperation = "source-over";
+  ctx.beginPath();
+}
+
+screenshotBtn.addEventListener("click", () => {
+  const title = titleInput.value.trim();
+  const filename = title ? `${title}.png` : "dessin.png";
+
+  const tempCanvas = document.createElement("canvas");
+  const tempCtx = tempCanvas.getContext("2d");
+  tempCanvas.width = canvas.width;
+  tempCanvas.height = canvas.height;
+
+  tempCtx.fillStyle = bgColor;
+  tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+
+  if (bgImage) {
+    tempCtx.drawImage(bgImage, 0, 0, tempCanvas.width, tempCanvas.height);
   }
 
-  function startDraw(e) {
-    if (eraserMode) {
-      startErase(e);
-      return;
-    }
-    if (!drawingMode) return;
-    if (e.touches && e.touches.length > 1) return;
-    e.preventDefault();
-    painting = true;
-    currentPath = [];
-    ctx.beginPath();
-    draw(e);
-  }
+  tempCtx.save();
+  tempCtx.translate(offsetX, offsetY);
+  tempCtx.scale(scale, scale);
 
-  function draw(e) {
-    if (!painting) return;
-    e.preventDefault();
+  for (const path of paths) {
+    tempCtx.beginPath();
+    for (let i = 0; i < path.length; i++) {
+      const point = path[i];
+      tempCtx.lineWidth = point.size;
+      tempCtx.strokeStyle = point.color;
+      tempCtx.shadowBlur = 0;
+      tempCtx.shadowColor = "transparent";
+      tempCtx.globalCompositeOperation = point.erase ? "destination-out" : "source-over";
 
-    let clientX, clientY;
-    if (e.touches) {
-      clientX = e.touches[0].clientX;
-      clientY = e.touches[0].clientY;
-    } else {
-      clientX = e.clientX;
-      clientY = e.clientY;
-    }
-
-    const rect = canvas.getBoundingClientRect();
-    const pos = screenToCanvas(clientX - rect.left, clientY - rect.top);
-
-    ctx.lineWidth = sizePicker.value;
-    ctx.lineCap = "round";
-    ctx.strokeStyle = colorPicker.value;
-
-    ctx.lineTo(pos.x, pos.y);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(pos.x, pos.y);
-
-    currentPath.push({
-      x: pos.x,
-      y: pos.y,
-      color: ctx.strokeStyle,
-      size: ctx.lineWidth
-    });
-  }
-
-  function endDraw(e) {
-    if (!painting) return;
-    painting = false;
-    ctx.beginPath();
-    if (currentPath.length) {
-      paths.push([...currentPath]);
-    }
-  }
-
-  // Fonction gomme : efface partiellement les points proches du curseur
-  function startErase(e) {
-    if (e.touches && e.touches.length > 1) return;
-    e.preventDefault();
-    painting = true;
-    erase(e);
-  }
-
-  function erase(e) {
-    if (!painting) return;
-    e.preventDefault();
-
-    let clientX, clientY;
-    if (e.touches) {
-      clientX = e.touches[0].clientX;
-      clientY = e.touches[0].clientY;
-    } else {
-      clientX = e.clientX;
-      clientY = e.clientY;
-    }
-
-    const rect = canvas.getBoundingClientRect();
-    const pos = screenToCanvas(clientX - rect.left, clientY - rect.top);
-    const radius = sizePicker.value / 2;
-
-    // On va filtrer tous les chemins pour supprimer points proches
-    let newPaths = [];
-
-    for (const path of paths) {
-      let newPathSegments = [];
-      let currentSegment = [];
-
-      for (const point of path) {
-        const dx = point.x - pos.x;
-        const dy = point.y - pos.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-
-        if (dist > radius) {
-          currentSegment.push(point);
-        } else {
-          // Point dans zone gomme => couper segment
-          if (currentSegment.length > 0) {
-            newPathSegments.push(currentSegment);
-            currentSegment = [];
-          }
-          // On ne pousse pas ce point = effacé
-        }
-      }
-      if (currentSegment.length > 0) {
-        newPathSegments.push(currentSegment);
-      }
-      newPaths.push(...newPathSegments);
-    }
-
-    paths = newPaths;
-    redrawCanvas();
-  }
-
-  function endErase(e) {
-    if (!painting) return;
-    painting = false;
-    ctx.beginPath();
-  }
-
-  // Undo dernier trait
-  function undoLast() {
-    paths.pop();
-    redrawCanvas();
-  }
-
-  // Clear tout
-  function clearCanvas() {
-    paths = [];
-    redrawCanvas();
-  }
-
-  // Gestion bascule dessin / gomme
-  modeToggle.addEventListener("click", () => {
-    drawingMode = true;
-    eraserMode = false;
-    modeToggle.classList.add("active");
-    eraserToggle.classList.remove("active");
-    canvas.style.cursor = "crosshair";
-  });
-
-  eraserToggle.addEventListener("click", () => {
-    drawingMode = false;
-    eraserMode = true;
-    eraserToggle.classList.add("active");
-    modeToggle.classList.remove("active");
-    canvas.style.cursor = "cell";
-  });
-
-  // Événements souris / tactile
-  canvas.addEventListener("mousedown", startDraw);
-  canvas.addEventListener("mousemove", draw);
-  canvas.addEventListener("mouseup", endDraw);
-  canvas.addEventListener("mouseleave", endDraw);
-
-  canvas.addEventListener("touchstart", startDraw);
-  canvas.addEventListener("touchmove", draw);
-  canvas.addEventListener("touchend", endDraw);
-
-  canvas.addEventListener("touchstart", startErase);
-  canvas.addEventListener("touchmove", erase);
-  canvas.addEventListener("touchend", endErase);
-
-  canvas.addEventListener("mousedown", startErase);
-  canvas.addEventListener("mousemove", erase);
-  canvas.addEventListener("mouseup", endErase);
-  canvas.addEventListener("mouseleave", endErase);
-
-  // Arrière-plan
-  bgColorPicker.addEventListener("input", () => {
-    bgColor = bgColorPicker.value;
-    redrawCanvas();
-  });
-
-  bgImagePicker.addEventListener("change", (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const img = new Image();
-    img.onload = () => {
-      bgImage = img;
-      redrawCanvas();
-    };
-    img.src = URL.createObjectURL(file);
-  });
-
-  removeBgBtn.addEventListener("click", () => {
-    bgImage = null;
-    redrawCanvas();
-  });
-
-  undoBtn.addEventListener("click", undoLast);
-  clearBtn.addEventListener("click", clearCanvas);
-
-  screenshotBtn.addEventListener("click", () => {
-    const tempCanvas = document.createElement("canvas");
-    const tempCtx = tempCanvas.getContext("2d");
-    tempCanvas.width = canvas.width;
-    tempCanvas.height = canvas.height;
-
-    drawBackground(tempCtx);
-
-    for (const path of paths) {
-      if (path.length === 0) continue;
-      tempCtx.beginPath();
-      for (let i = 0; i < path.length; i++) {
-        const point = path[i];
-        tempCtx.lineWidth = point.size;
-        tempCtx.strokeStyle = point.color;
-        if (i === 0) {
-          tempCtx.moveTo(point.x, point.y);
-        } else {
-          tempCtx.lineTo(point.x, point.y);
-        }
+      if (i === 0) {
+        tempCtx.moveTo(point.x, point.y);
+      } else {
+        tempCtx.lineTo(point.x, point.y);
       }
       tempCtx.stroke();
     }
+  }
 
-    const link = document.createElement("a");
-    const titre = titleInput.value.trim().replace(/[^\w\s]/gi, "") || "dessin";
-    link.download = titre + ".png";
-    link.href = tempCanvas.toDataURL();
-    link.click();
-  });
+  tempCtx.restore();
+  tempCtx.globalCompositeOperation = "source-over";
 
-  redrawCanvas();
+  const link = document.createElement("a");
+  link.download = filename;
+  link.href = tempCanvas.toDataURL("image/png");
+  link.click();
+});
+
 </script>
 </body>
 </html>
