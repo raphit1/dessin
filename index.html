@@ -83,10 +83,6 @@
       <input type="range" id="sizePicker" min="1" max="50" value="5" />
     </label>
 
-    <label>
-      <input type="checkbox" id="eraserToggle" /> Gomme
-    </label>
-
     <label>Fond:
       <input type="color" id="bgColorPicker" value="#ffffff" />
     </label>
@@ -116,7 +112,6 @@
   const bgColorPicker = document.getElementById("bgColorPicker");
   const bgImagePicker = document.getElementById("bgImagePicker");
   const removeBgBtn = document.getElementById("removeBgBtn");
-  const eraserToggle = document.getElementById("eraserToggle");
   const modeToggle = document.getElementById("modeToggle");
 
   let painting = false;
@@ -188,12 +183,11 @@
 
     for (const path of paths) {
       ctx.beginPath();
-      // On adapte globalCompositeOperation selon si le chemin est gomme ou dessin
-      ctx.globalCompositeOperation = path.isEraser ? 'destination-out' : 'source-over';
+      ctx.globalCompositeOperation = 'source-over';
       for (let i = 0; i < path.length; i++) {
         const point = path[i];
         ctx.lineWidth = point.size;
-        ctx.strokeStyle = point.color; // même si gomme, ça n'a pas d'effet car composite change
+        ctx.strokeStyle = point.color;
         ctx.shadowBlur = 0;
         ctx.shadowColor = "transparent";
         if (i === 0) ctx.moveTo(point.x, point.y);
@@ -232,14 +226,8 @@
 
     ctx.lineWidth = sizePicker.value;
     ctx.lineCap = "round";
-
-    if (eraserToggle.checked) {
-      ctx.globalCompositeOperation = 'destination-out';
-      ctx.strokeStyle = "rgba(0,0,0,1)"; // La couleur n'a pas d'importance ici
-    } else {
-      ctx.globalCompositeOperation = 'source-over';
-      ctx.strokeStyle = colorPicker.value;
-    }
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.strokeStyle = colorPicker.value;
     ctx.shadowBlur = 0;
     ctx.shadowColor = "transparent";
 
@@ -261,8 +249,6 @@
     painting = false;
     ctx.beginPath();
     if (currentPath.length) {
-      // On sauvegarde si c'était une gomme ou pas avec le chemin
-      currentPath.isEraser = eraserToggle.checked;
       paths.push([...currentPath]);
     }
   }
@@ -387,7 +373,7 @@
 
     for (const path of paths) {
       tempCtx.beginPath();
-      tempCtx.globalCompositeOperation = path.isEraser ? 'destination-out' : 'source-over';
+      tempCtx.globalCompositeOperation = 'source-over';
       for (let i = 0; i < path.length; i++) {
         const point = path[i];
         tempCtx.lineWidth = point.size;
