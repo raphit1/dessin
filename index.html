@@ -64,7 +64,7 @@
 
     <button id="undoBtn">↩️ Annuler</button>
     <button id="clearBtn">🧽 Effacer</button>
-    <button id="screenshotBtn">📸 Screenshot</button>
+    <button id="screenshotBtn">📥 Télécharger</button>
   </div>
 
   <canvas id="drawCanvas" width="350" height="350"></canvas>
@@ -147,9 +147,24 @@
     function takeScreenshot() {
       const title = titleInput.value.trim();
       const filename = title ? `${title}.png` : "dessin.png";
+
+      // Créer un nouveau canvas temporaire avec fond blanc
+      const tempCanvas = document.createElement("canvas");
+      const tempCtx = tempCanvas.getContext("2d");
+      tempCanvas.width = canvas.width;
+      tempCanvas.height = canvas.height;
+
+      // Fond blanc
+      tempCtx.fillStyle = "#ffffff";
+      tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+
+      // Dessin actuel
+      tempCtx.drawImage(canvas, 0, 0);
+
+      // Télécharger
       const link = document.createElement("a");
       link.download = filename;
-      link.href = canvas.toDataURL("image/png");
+      link.href = tempCanvas.toDataURL("image/png");
       link.click();
     }
 
