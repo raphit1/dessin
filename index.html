@@ -46,9 +46,6 @@
     button:hover {
       background: #357ac9;
     }
-    .active {
-      background: #2c5aa0;
-    }
   </style>
 </head>
 <body>
@@ -73,9 +70,11 @@
       <input type="file" id="bgImagePicker" accept="image/*" />
     </label>
 
+    <label>Zoom général:
+      <input type="range" id="zoomSlider" min="0.5" max="3" step="0.1" value="1" />
+    </label>
+
     <button id="removeBgBtn">❌ Supprimer l'image de fond</button>
-    <button id="drawModeBtn" class="active">🖌️ Dessin</button>
-    <button id="moveModeBtn">✋ Main</button>
     <button id="undoBtn">↩️ Annuler</button>
     <button id="clearBtn">🧽 Effacer</button>
     <button id="screenshotBtn">📥 Télécharger</button>
@@ -96,10 +95,7 @@
     const bgColorPicker = document.getElementById("bgColorPicker");
     const bgImagePicker = document.getElementById("bgImagePicker");
     const removeBgBtn = document.getElementById("removeBgBtn");
-    const drawModeBtn = document.getElementById("drawModeBtn");
-    const moveModeBtn = document.getElementById("moveModeBtn");
-
-    let mode = "draw"; // 'draw' ou 'move'
+    const zoomSlider = document.getElementById("zoomSlider");
 
     let painting = false;
     let paths = [];
@@ -107,25 +103,16 @@
 
     let bgColor = "#ffffff";
     let bgImage = null;
-    let bgImageX = 0, bgImageY = 0;
-    let bgImageScale = 1;
+    let zoom = 1;
 
-    let draggingImage = false;
-    let dragStartX = 0, dragStartY = 0;
-
-    function setMode(newMode) {
-      mode = newMode;
-      drawModeBtn.classList.remove("active");
-      moveModeBtn.classList.remove("active");
-      if (mode === "draw") {
-        drawModeBtn.classList.add("active");
-      } else {
-        moveModeBtn.classList.add("active");
-      }
+    function getEventPos(e) {
+      const rect = canvas.getBoundingClientRect();
+      const x = ((e.touches ? e.touches[0].clientX : e.clientX) - rect.left) / zoom;
+      const y = ((e.touches ? e.touches[0].clientY : e.clientY) - rect.top) / zoom;
+      return { x, y };
     }
 
     function startDraw(e) {
-      if (mode !== "draw") return;
       painting = true;
       currentPath = [];
       ctx.beginPath();
@@ -133,10 +120,8 @@
     }
 
     function draw(e) {
-      if (!painting || mode !== "draw") return;
-      const rect = canvas.getBoundingClientRect();
-      const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
-      const y = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
+      if (!painting) return;
+      const { x, y } = getEventPos(e);
 
       ctx.lineWidth = sizePicker.value;
       ctx.lineCap = "round";
@@ -151,7 +136,7 @@
     }
 
     function endDraw() {
-      if (!painting || mode !== "draw") return;
+      if (!painting) return;
       painting = false;
       ctx.beginPath();
       paths.push([...currentPath]);
@@ -171,15 +156,14 @@
       ctxTarget.fillStyle = bgColor;
       ctxTarget.fillRect(0, 0, canvas.width, canvas.height);
       if (bgImage) {
-        ctxTarget.save();
-        ctxTarget.translate(bgImageX, bgImageY);
-        ctxTarget.scale(bgImageScale, bgImageScale);
         ctxTarget.drawImage(bgImage, 0, 0, canvas.width, canvas.height);
-        ctxTarget.restore();
       }
     }
 
     function redrawCanvas() {
+      ctx.setTransform(1, 0, 0, 1, 0, 0); // reset transform
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.scale(zoom, zoom);
       drawBackground(ctx);
       for (const path of paths) {
         ctx.beginPath();
@@ -207,15 +191,33 @@
       tempCanvas.width = canvas.width;
       tempCanvas.height = canvas.height;
 
-      drawBackground(tempCtx);
-      tempCtx.drawImage(canvas, 0, 0);
+      // Dessin complet avec zoom 1 pour export propre
+      tempCtx.fillStyle = bgColor;
+      tempCtx.fillRect(0, 0, canvas.width, canvas.height);
+      if (bgImage) {
+        tempCtx.drawImage(bgImage, 0, 0, canvas.width, canvas.height);
+      }
+      for (const path of paths) {
+        tempCtx.beginPath();
+        for (let i = 0; i < path.length; i++) {
+          const point = path[i];
+          tempCtx.lineWidth = point.size;
+          tempCtx.strokeStyle = point.color;
+          if (i === 0) {
+            tempCtx.moveTo(point.x, point.y);
+          } else {
+            tempCtx.lineTo(point.x, point.y);
+          }
+          tempCtx.stroke();
+        }
+      }
+
       const link = document.createElement("a");
       link.download = filename;
       link.href = tempCanvas.toDataURL("image/png");
       link.click();
     }
 
-    // Background controls
     bgColorPicker.addEventListener("input", (e) => {
       bgColor = e.target.value;
       redrawCanvas();
@@ -231,9 +233,6 @@
       reader.onload = function(evt) {
         img.onload = function() {
           bgImage = img;
-          bgImageX = 0;
-          bgImageY = 0;
-          bgImageScale = 1;
           redrawCanvas();
         };
         img.src = evt.target.result;
@@ -246,58 +245,25 @@
       redrawCanvas();
     });
 
-    // Image move events
-    canvas.addEventListener("mousedown", (e) => {
-      if (mode === "move" && bgImage) {
-        const rect = canvas.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
-        draggingImage = true;
-        dragStartX = x - bgImageX;
-        dragStartY = y - bgImageY;
-      }
+    zoomSlider.addEventListener("input", (e) => {
+      zoom = parseFloat(e.target.value);
+      redrawCanvas();
     });
 
-    canvas.addEventListener("mousemove", (e) => {
-      if (draggingImage && mode === "move") {
-        const rect = canvas.getBoundingClientRect();
-        bgImageX = e.clientX - rect.left - dragStartX;
-        bgImageY = e.clientY - rect.top - dragStartY;
-        redrawCanvas();
-      }
-    });
-
-    canvas.addEventListener("mouseup", () => {
-      draggingImage = false;
-    });
-
-    canvas.addEventListener("mouseout", () => {
-      draggingImage = false;
-    });
-
-    canvas.addEventListener("wheel", (e) => {
-      if (mode === "move" && bgImage) {
-        e.preventDefault();
-        const delta = e.deltaY < 0 ? 1.05 : 0.95;
-        bgImageScale *= delta;
-        redrawCanvas();
-      }
-    });
-
-    // Drawing events
     canvas.addEventListener("mousedown", startDraw);
     canvas.addEventListener("mousemove", draw);
     canvas.addEventListener("mouseup", endDraw);
+    canvas.addEventListener("mouseout", endDraw);
     canvas.addEventListener("touchstart", startDraw);
     canvas.addEventListener("touchmove", draw);
     canvas.addEventListener("touchend", endDraw);
 
-    // Buttons
     clearBtn.addEventListener("click", clearCanvas);
     undoBtn.addEventListener("click", undoLast);
     screenshotBtn.addEventListener("click", takeScreenshot);
-    drawModeBtn.addEventListener("click", () => setMode("draw"));
-    moveModeBtn.addEventListener("click", () => setMode("move"));
+
+    // Initial draw
+    redrawCanvas();
   </script>
 </body>
 </html>
