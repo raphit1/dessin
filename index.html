@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Dessiner ton œuvre</title>
   <style>
     body {
@@ -46,31 +46,36 @@
     button:hover {
       background: #357ac9;
     }
+    .active {
+      background: #2c5aa0;
+    }
   </style>
 </head>
 <body>
-
   <h1>🖌️ Crée ton œuvre</h1>
 
-  <input type="text" id="title" placeholder="Titre de l'œuvre (optionnel)">
+  <input type="text" id="title" placeholder="Titre de l'œuvre (optionnel)" />
 
   <div class="tools">
     <label>Couleur:
-      <input type="color" id="colorPicker" value="#000000">
+      <input type="color" id="colorPicker" value="#000000" />
     </label>
 
     <label>Taille:
-      <input type="range" id="sizePicker" min="1" max="50" value="5">
+      <input type="range" id="sizePicker" min="1" max="50" value="5" />
     </label>
 
     <label>Fond:
-      <input type="color" id="bgColorPicker" value="#ffffff">
+      <input type="color" id="bgColorPicker" value="#ffffff" />
     </label>
 
     <label>Image de fond:
-      <input type="file" id="bgImagePicker" accept="image/*">
+      <input type="file" id="bgImagePicker" accept="image/*" />
     </label>
 
+    <button id="removeBgBtn">❌ Supprimer l'image de fond</button>
+    <button id="drawModeBtn" class="active">🖌️ Dessin</button>
+    <button id="moveModeBtn">✋ Main</button>
     <button id="undoBtn">↩️ Annuler</button>
     <button id="clearBtn">🧽 Effacer</button>
     <button id="screenshotBtn">📥 Télécharger</button>
@@ -81,6 +86,7 @@
   <script>
     const canvas = document.getElementById("drawCanvas");
     const ctx = canvas.getContext("2d");
+
     const colorPicker = document.getElementById("colorPicker");
     const sizePicker = document.getElementById("sizePicker");
     const clearBtn = document.getElementById("clearBtn");
@@ -89,6 +95,11 @@
     const titleInput = document.getElementById("title");
     const bgColorPicker = document.getElementById("bgColorPicker");
     const bgImagePicker = document.getElementById("bgImagePicker");
+    const removeBgBtn = document.getElementById("removeBgBtn");
+    const drawModeBtn = document.getElementById("drawModeBtn");
+    const moveModeBtn = document.getElementById("moveModeBtn");
+
+    let mode = "draw"; // 'draw' ou 'move'
 
     let painting = false;
     let paths = [];
@@ -96,8 +107,25 @@
 
     let bgColor = "#ffffff";
     let bgImage = null;
+    let bgImageX = 0, bgImageY = 0;
+    let bgImageScale = 1;
+
+    let draggingImage = false;
+    let dragStartX = 0, dragStartY = 0;
+
+    function setMode(newMode) {
+      mode = newMode;
+      drawModeBtn.classList.remove("active");
+      moveModeBtn.classList.remove("active");
+      if (mode === "draw") {
+        drawModeBtn.classList.add("active");
+      } else {
+        moveModeBtn.classList.add("active");
+      }
+    }
 
     function startDraw(e) {
+      if (mode !== "draw") return;
       painting = true;
       currentPath = [];
       ctx.beginPath();
@@ -105,7 +133,7 @@
     }
 
     function draw(e) {
-      if (!painting) return;
+      if (!painting || mode !== "draw") return;
       const rect = canvas.getBoundingClientRect();
       const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
       const y = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
@@ -123,7 +151,7 @@
     }
 
     function endDraw() {
-      if (!painting) return;
+      if (!painting || mode !== "draw") return;
       painting = false;
       ctx.beginPath();
       paths.push([...currentPath]);
@@ -143,7 +171,11 @@
       ctxTarget.fillStyle = bgColor;
       ctxTarget.fillRect(0, 0, canvas.width, canvas.height);
       if (bgImage) {
+        ctxTarget.save();
+        ctxTarget.translate(bgImageX, bgImageY);
+        ctxTarget.scale(bgImageScale, bgImageScale);
         ctxTarget.drawImage(bgImage, 0, 0, canvas.width, canvas.height);
+        ctxTarget.restore();
       }
     }
 
@@ -175,29 +207,15 @@
       tempCanvas.width = canvas.width;
       tempCanvas.height = canvas.height;
 
-      drawBackground(tempCtx); // fond couleur + image
-      tempCtx.drawImage(canvas, 0, 0); // dessin par-dessus
-
+      drawBackground(tempCtx);
+      tempCtx.drawImage(canvas, 0, 0);
       const link = document.createElement("a");
       link.download = filename;
       link.href = tempCanvas.toDataURL("image/png");
       link.click();
     }
 
-    // Event listeners
-    canvas.addEventListener("mousedown", startDraw);
-    canvas.addEventListener("mousemove", draw);
-    canvas.addEventListener("mouseup", endDraw);
-    canvas.addEventListener("mouseout", endDraw);
-
-    canvas.addEventListener("touchstart", startDraw);
-    canvas.addEventListener("touchmove", draw);
-    canvas.addEventListener("touchend", endDraw);
-
-    clearBtn.addEventListener("click", clearCanvas);
-    undoBtn.addEventListener("click", undoLast);
-    screenshotBtn.addEventListener("click", takeScreenshot);
-
+    // Background controls
     bgColorPicker.addEventListener("input", (e) => {
       bgColor = e.target.value;
       redrawCanvas();
@@ -213,13 +231,73 @@
       reader.onload = function(evt) {
         img.onload = function() {
           bgImage = img;
+          bgImageX = 0;
+          bgImageY = 0;
+          bgImageScale = 1;
           redrawCanvas();
         };
         img.src = evt.target.result;
       };
       reader.readAsDataURL(file);
     });
-  </script>
 
+    removeBgBtn.addEventListener("click", () => {
+      bgImage = null;
+      redrawCanvas();
+    });
+
+    // Image move events
+    canvas.addEventListener("mousedown", (e) => {
+      if (mode === "move" && bgImage) {
+        const rect = canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        draggingImage = true;
+        dragStartX = x - bgImageX;
+        dragStartY = y - bgImageY;
+      }
+    });
+
+    canvas.addEventListener("mousemove", (e) => {
+      if (draggingImage && mode === "move") {
+        const rect = canvas.getBoundingClientRect();
+        bgImageX = e.clientX - rect.left - dragStartX;
+        bgImageY = e.clientY - rect.top - dragStartY;
+        redrawCanvas();
+      }
+    });
+
+    canvas.addEventListener("mouseup", () => {
+      draggingImage = false;
+    });
+
+    canvas.addEventListener("mouseout", () => {
+      draggingImage = false;
+    });
+
+    canvas.addEventListener("wheel", (e) => {
+      if (mode === "move" && bgImage) {
+        e.preventDefault();
+        const delta = e.deltaY < 0 ? 1.05 : 0.95;
+        bgImageScale *= delta;
+        redrawCanvas();
+      }
+    });
+
+    // Drawing events
+    canvas.addEventListener("mousedown", startDraw);
+    canvas.addEventListener("mousemove", draw);
+    canvas.addEventListener("mouseup", endDraw);
+    canvas.addEventListener("touchstart", startDraw);
+    canvas.addEventListener("touchmove", draw);
+    canvas.addEventListener("touchend", endDraw);
+
+    // Buttons
+    clearBtn.addEventListener("click", clearCanvas);
+    undoBtn.addEventListener("click", undoLast);
+    screenshotBtn.addEventListener("click", takeScreenshot);
+    drawModeBtn.addEventListener("click", () => setMode("draw"));
+    moveModeBtn.addEventListener("click", () => setMode("move"));
+  </script>
 </body>
 </html>
