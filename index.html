@@ -87,10 +87,6 @@
       <input type="checkbox" id="eraserToggle" /> Gomme
     </label>
 
-    <label>Taille gomme:
-      <input type="range" id="eraserSize" min="5" max="100" value="30" />
-    </label>
-
     <label>Fond:
       <input type="color" id="bgColorPicker" value="#ffffff" />
     </label>
@@ -108,138 +104,303 @@
   <canvas id="drawCanvas" width="350" height="350"></canvas>
 
 <script>
-// ... tous tes autres scripts (inchangés sauf dessous)
+  const canvas = document.getElementById("drawCanvas");
+  const ctx = canvas.getContext("2d");
 
-const eraserToggle = document.getElementById("eraserToggle");
-const eraserSize = document.getElementById("eraserSize");
+  const colorPicker = document.getElementById("colorPicker");
+  const sizePicker = document.getElementById("sizePicker");
+  const clearBtn = document.getElementById("clearBtn");
+  const undoBtn = document.getElementById("undoBtn");
+  const screenshotBtn = document.getElementById("screenshotBtn");
+  const titleInput = document.getElementById("title");
+  const bgColorPicker = document.getElementById("bgColorPicker");
+  const bgImagePicker = document.getElementById("bgImagePicker");
+  const removeBgBtn = document.getElementById("removeBgBtn");
+  const eraserToggle = document.getElementById("eraserToggle");
+  const modeToggle = document.getElementById("modeToggle");
 
-function draw(e) {
-  if (!painting) return;
-  e.preventDefault();
+  let painting = false;
+  let paths = [];
+  let currentPath = [];
 
-  let clientX, clientY;
-  if (e.touches) {
-    clientX = e.touches[0].clientX;
-    clientY = e.touches[0].clientY;
-  } else {
-    clientX = e.clientX;
-    clientY = e.clientY;
+  let bgColor = "#ffffff";
+  let bgImage = null;
+
+  let scale = 1;
+  let offsetX = 0;
+  let offsetY = 0;
+  let lastDist = null;
+  let lastMidpoint = null;
+  let isPanning = false;
+  let drawingMode = true;
+
+  function clampOffsets() {
+    const widthScaled = canvas.width * scale;
+    const heightScaled = canvas.height * scale;
+
+    if (widthScaled > canvas.width) {
+      offsetX = Math.min(0, Math.max(offsetX, canvas.width - widthScaled));
+    } else {
+      offsetX = 0;
+    }
+
+    if (heightScaled > canvas.height) {
+      offsetY = Math.min(0, Math.max(offsetY, canvas.height - heightScaled));
+    } else {
+      offsetY = 0;
+    }
   }
 
-  const rect = canvas.getBoundingClientRect();
-  const pos = screenToCanvas(clientX - rect.left, clientY - rect.top);
-
-  const isEraser = eraserToggle.checked;
-
-  ctx.lineCap = "round";
-
-  if (isEraser) {
-    ctx.globalCompositeOperation = "destination-out";
-    ctx.lineWidth = eraserSize.value;
-    ctx.strokeStyle = "rgba(0,0,0,1)";
-  } else {
-    ctx.globalCompositeOperation = "source-over";
-    ctx.lineWidth = sizePicker.value;
-    ctx.strokeStyle = colorPicker.value;
+  function screenToCanvas(x, y) {
+    return {
+      x: (x - offsetX) / scale,
+      y: (y - offsetY) / scale
+    };
   }
 
-  ctx.shadowBlur = 0;
-  ctx.shadowColor = "transparent";
+  function getDistance(touches) {
+    const dx = touches[0].clientX - touches[1].clientX;
+    const dy = touches[0].clientY - touches[1].clientY;
+    return Math.hypot(dx, dy);
+  }
 
-  ctx.lineTo(pos.x, pos.y);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(pos.x, pos.y);
+  function getMidpoint(touches) {
+    return {
+      x: (touches[0].clientX + touches[1].clientX) / 2,
+      y: (touches[0].clientY + touches[1].clientY) / 2
+    };
+  }
 
-  currentPath.push({
-    x: pos.x,
-    y: pos.y,
-    color: ctx.strokeStyle,
-    size: ctx.lineWidth,
-    blur: false,
-    blurAmount: 0,
-    erase: isEraser
-  });
-}
+  function drawBackground(ctxTarget) {
+    ctxTarget.fillStyle = bgColor;
+    ctxTarget.fillRect(0, 0, canvas.width, canvas.height);
+    if (bgImage) {
+      ctxTarget.drawImage(bgImage, 0, 0, canvas.width, canvas.height);
+    }
+  }
 
-function redrawCanvas() {
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.translate(offsetX, offsetY);
-  ctx.scale(scale, scale);
+  function redrawCanvas() {
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.translate(offsetX, offsetY);
+    ctx.scale(scale, scale);
+    drawBackground(ctx);
 
-  drawBackground(ctx);
-
-  for (const path of paths) {
+    for (const path of paths) {
+      ctx.beginPath();
+      for (let i = 0; i < path.length; i++) {
+        const point = path[i];
+        ctx.lineWidth = point.size;
+        ctx.strokeStyle = point.color;
+        ctx.shadowBlur = 0;
+        ctx.shadowColor = "transparent";
+        if (i === 0) ctx.moveTo(point.x, point.y);
+        else ctx.lineTo(point.x, point.y);
+        ctx.stroke();
+      }
+    }
     ctx.beginPath();
-    for (let i = 0; i < path.length; i++) {
-      const point = path[i];
-      ctx.lineWidth = point.size;
-      ctx.strokeStyle = point.color;
-      ctx.shadowBlur = 0;
-      ctx.shadowColor = "transparent";
-      ctx.globalCompositeOperation = point.erase ? "destination-out" : "source-over";
+  }
 
-      if (i === 0) {
-        ctx.moveTo(point.x, point.y);
-      } else {
-        ctx.lineTo(point.x, point.y);
-      }
-      ctx.stroke();
+  function startDraw(e) {
+    if (!drawingMode) return;
+    if (e.touches && e.touches.length > 1) return;
+    e.preventDefault();
+    painting = true;
+    currentPath = [];
+    ctx.beginPath();
+    draw(e);
+  }
+
+  function draw(e) {
+    if (!painting) return;
+    e.preventDefault();
+    let clientX, clientY;
+    if (e.touches) {
+      clientX = e.touches[0].clientX;
+      clientY = e.touches[0].clientY;
+    } else {
+      clientX = e.clientX;
+      clientY = e.clientY;
+    }
+
+    const rect = canvas.getBoundingClientRect();
+    const pos = screenToCanvas(clientX - rect.left, clientY - rect.top);
+
+    ctx.lineWidth = sizePicker.value;
+    ctx.lineCap = "round";
+    ctx.strokeStyle = eraserToggle.checked ? bgColor : colorPicker.value;
+    ctx.shadowBlur = 0;
+    ctx.shadowColor = "transparent";
+
+    ctx.lineTo(pos.x, pos.y);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(pos.x, pos.y);
+
+    currentPath.push({
+      x: pos.x,
+      y: pos.y,
+      color: ctx.strokeStyle,
+      size: ctx.lineWidth,
+      blur: false,
+      blurAmount: 0
+    });
+  }
+
+  function endDraw(e) {
+    if (!painting) return;
+    painting = false;
+    ctx.beginPath();
+    if (currentPath.length) {
+      paths.push([...currentPath]);
     }
   }
-  ctx.globalCompositeOperation = "source-over";
-  ctx.beginPath();
-}
 
-screenshotBtn.addEventListener("click", () => {
-  const title = titleInput.value.trim();
-  const filename = title ? `${title}.png` : "dessin.png";
-
-  const tempCanvas = document.createElement("canvas");
-  const tempCtx = tempCanvas.getContext("2d");
-  tempCanvas.width = canvas.width;
-  tempCanvas.height = canvas.height;
-
-  tempCtx.fillStyle = bgColor;
-  tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
-
-  if (bgImage) {
-    tempCtx.drawImage(bgImage, 0, 0, tempCanvas.width, tempCanvas.height);
+  function undoLast() {
+    paths.pop();
+    redrawCanvas();
   }
 
-  tempCtx.save();
-  tempCtx.translate(offsetX, offsetY);
-  tempCtx.scale(scale, scale);
+  function clearCanvas() {
+    paths = [];
+    redrawCanvas();
+  }
 
-  for (const path of paths) {
-    tempCtx.beginPath();
-    for (let i = 0; i < path.length; i++) {
-      const point = path[i];
-      tempCtx.lineWidth = point.size;
-      tempCtx.strokeStyle = point.color;
-      tempCtx.shadowBlur = 0;
-      tempCtx.shadowColor = "transparent";
-      tempCtx.globalCompositeOperation = point.erase ? "destination-out" : "source-over";
+  modeToggle.addEventListener("click", () => {
+    drawingMode = !drawingMode;
+    modeToggle.textContent = drawingMode ? "Dessin" : "Navigation";
+    modeToggle.classList.toggle("active", drawingMode);
+    canvas.style.cursor = drawingMode ? "crosshair" : "grab";
+    painting = false;
+  });
 
-      if (i === 0) {
-        tempCtx.moveTo(point.x, point.y);
-      } else {
-        tempCtx.lineTo(point.x, point.y);
-      }
-      tempCtx.stroke();
+  bgColorPicker.addEventListener("input", (e) => {
+    bgColor = e.target.value;
+    redrawCanvas();
+  });
+
+  bgImagePicker.addEventListener("change", (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const img = new Image();
+    img.onload = () => {
+      bgImage = img;
+      redrawCanvas();
+    };
+    img.src = URL.createObjectURL(file);
+  });
+
+  removeBgBtn.addEventListener("click", () => {
+    bgImage = null;
+    bgImagePicker.value = null;
+    redrawCanvas();
+  });
+
+  canvas.addEventListener("touchstart", (e) => {
+    if (!drawingMode && e.touches.length === 2) {
+      e.preventDefault();
+      lastDist = getDistance(e.touches);
+      lastMidpoint = getMidpoint(e.touches);
+      isPanning = true;
+    } else if (drawingMode && e.touches.length === 1) {
+      startDraw(e);
     }
-  }
+  }, { passive: false });
 
-  tempCtx.restore();
-  tempCtx.globalCompositeOperation = "source-over";
+  canvas.addEventListener("touchmove", (e) => {
+    if (!drawingMode && e.touches.length === 2 && isPanning) {
+      e.preventDefault();
+      const dist = getDistance(e.touches);
+      const midpoint = getMidpoint(e.touches);
+      const zoomFactor = dist / lastDist;
+      let newScale = Math.min(Math.max(scale * zoomFactor, 1), 5);
 
-  const link = document.createElement("a");
-  link.download = filename;
-  link.href = tempCanvas.toDataURL("image/png");
-  link.click();
-});
+      const rect = canvas.getBoundingClientRect();
+      const midCanvasBefore = screenToCanvas(midpoint.x - rect.left, midpoint.y - rect.top);
+      scale = newScale;
+      clampOffsets();
+      const midCanvasAfter = screenToCanvas(midpoint.x - rect.left, midpoint.y - rect.top);
 
+      offsetX += (midCanvasAfter.x - midCanvasBefore.x) * scale;
+      offsetY += (midCanvasAfter.y - midCanvasBefore.y) * scale;
+      clampOffsets();
+
+      offsetX += midpoint.x - lastMidpoint.x;
+      offsetY += midpoint.y - lastMidpoint.y;
+      clampOffsets();
+
+      lastDist = dist;
+      lastMidpoint = midpoint;
+
+      redrawCanvas();
+    } else if (drawingMode && e.touches.length === 1) {
+      draw(e);
+    }
+  }, { passive: false });
+
+  canvas.addEventListener("touchend", (e) => {
+    if (!drawingMode && e.touches.length < 2) {
+      isPanning = false;
+      lastDist = null;
+      lastMidpoint = null;
+    }
+    if (drawingMode && e.touches.length === 0) {
+      endDraw(e);
+    }
+  });
+
+  canvas.addEventListener("mousedown", (e) => { if (drawingMode) startDraw(e); });
+  canvas.addEventListener("mousemove", (e) => { if (drawingMode) draw(e); });
+  canvas.addEventListener("mouseup", (e) => { if (drawingMode) endDraw(e); });
+  canvas.addEventListener("mouseout", (e) => { if (drawingMode) endDraw(e); });
+
+  screenshotBtn.addEventListener("click", () => {
+    const title = titleInput.value.trim();
+    const filename = title ? `${title}.png` : "dessin.png";
+
+    const tempCanvas = document.createElement("canvas");
+    const tempCtx = tempCanvas.getContext("2d");
+    tempCanvas.width = canvas.width;
+    tempCanvas.height = canvas.height;
+
+    tempCtx.fillStyle = bgColor;
+    tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+
+    if (bgImage) {
+      tempCtx.drawImage(bgImage, 0, 0, tempCanvas.width, tempCanvas.height);
+    }
+
+    tempCtx.save();
+    tempCtx.translate(offsetX, offsetY);
+    tempCtx.scale(scale, scale);
+
+    for (const path of paths) {
+      tempCtx.beginPath();
+      for (let i = 0; i < path.length; i++) {
+        const point = path[i];
+        tempCtx.lineWidth = point.size;
+        tempCtx.strokeStyle = point.color;
+        tempCtx.shadowBlur = 0;
+        tempCtx.shadowColor = "transparent";
+        if (i === 0) tempCtx.moveTo(point.x, point.y);
+        else tempCtx.lineTo(point.x, point.y);
+        tempCtx.stroke();
+      }
+    }
+
+    tempCtx.restore();
+
+    const link = document.createElement("a");
+    link.download = filename;
+    link.href = tempCanvas.toDataURL("image/png");
+    link.click();
+  });
+
+  clearBtn.addEventListener("click", clearCanvas);
+  undoBtn.addEventListener("click", undoLast);
+  redrawCanvas();
 </script>
+
 </body>
 </html>
