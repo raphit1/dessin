@@ -24,7 +24,8 @@
       justify-content: center;
     }
     .tools input[type="color"],
-    .tools input[type="range"] {
+    .tools input[type="range"],
+    .tools input[type="file"] {
       vertical-align: middle;
     }
     #title {
@@ -62,6 +63,14 @@
       <input type="range" id="sizePicker" min="1" max="50" value="5">
     </label>
 
+    <label>Fond:
+      <input type="color" id="bgColorPicker" value="#ffffff">
+    </label>
+
+    <label>Image de fond:
+      <input type="file" id="bgImagePicker" accept="image/*">
+    </label>
+
     <button id="undoBtn">↩️ Annuler</button>
     <button id="clearBtn">🧽 Effacer</button>
     <button id="screenshotBtn">📥 Télécharger</button>
@@ -78,10 +87,15 @@
     const undoBtn = document.getElementById("undoBtn");
     const screenshotBtn = document.getElementById("screenshotBtn");
     const titleInput = document.getElementById("title");
+    const bgColorPicker = document.getElementById("bgColorPicker");
+    const bgImagePicker = document.getElementById("bgImagePicker");
 
     let painting = false;
     let paths = [];
     let currentPath = [];
+
+    let bgColor = "#ffffff";
+    let bgImage = null;
 
     function startDraw(e) {
       painting = true;
@@ -120,8 +134,21 @@
       redrawCanvas();
     }
 
+    function clearCanvas() {
+      paths = [];
+      redrawCanvas();
+    }
+
+    function drawBackground(ctxTarget) {
+      ctxTarget.fillStyle = bgColor;
+      ctxTarget.fillRect(0, 0, canvas.width, canvas.height);
+      if (bgImage) {
+        ctxTarget.drawImage(bgImage, 0, 0, canvas.width, canvas.height);
+      }
+    }
+
     function redrawCanvas() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      drawBackground(ctx);
       for (const path of paths) {
         ctx.beginPath();
         for (let i = 0; i < path.length; i++) {
@@ -139,29 +166,18 @@
       ctx.beginPath();
     }
 
-    function clearCanvas() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      paths = [];
-    }
-
     function takeScreenshot() {
       const title = titleInput.value.trim();
       const filename = title ? `${title}.png` : "dessin.png";
 
-      // Créer un nouveau canvas temporaire avec fond blanc
       const tempCanvas = document.createElement("canvas");
       const tempCtx = tempCanvas.getContext("2d");
       tempCanvas.width = canvas.width;
       tempCanvas.height = canvas.height;
 
-      // Fond blanc
-      tempCtx.fillStyle = "#ffffff";
-      tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+      drawBackground(tempCtx); // fond couleur + image
+      tempCtx.drawImage(canvas, 0, 0); // dessin par-dessus
 
-      // Dessin actuel
-      tempCtx.drawImage(canvas, 0, 0);
-
-      // Télécharger
       const link = document.createElement("a");
       link.download = filename;
       link.href = tempCanvas.toDataURL("image/png");
@@ -181,6 +197,28 @@
     clearBtn.addEventListener("click", clearCanvas);
     undoBtn.addEventListener("click", undoLast);
     screenshotBtn.addEventListener("click", takeScreenshot);
+
+    bgColorPicker.addEventListener("input", (e) => {
+      bgColor = e.target.value;
+      redrawCanvas();
+    });
+
+    bgImagePicker.addEventListener("change", (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const img = new Image();
+      const reader = new FileReader();
+
+      reader.onload = function(evt) {
+        img.onload = function() {
+          bgImage = img;
+          redrawCanvas();
+        };
+        img.src = evt.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
   </script>
 
 </body>
