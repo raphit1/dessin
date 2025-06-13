@@ -14,44 +14,37 @@
     -moz-user-select:none;
     -ms-user-select:none;
     user-select:none;
-    margin: 0;
-    height: 100vh;
-    display: flex;
-    flex-direction: column;
   }
-  h1 {
-    margin-bottom: 0.5rem;
-  }
-  #title {
-    width: 80%;
-    padding: 0.5rem;
-    margin: 0.5rem auto 1rem auto;
-    font-size: 1rem;
-    border-radius: 6px;
-    border: 1px solid #ccc;
-    box-sizing: border-box;
+  canvas {
+    border: 2px solid #333;
+    background-color: #fff;
+    touch-action: none;
+    cursor: crosshair;
+    display: block;
+    margin: auto;
   }
   .tools {
-    margin-top: 0.5rem;
+    margin-top: 1rem;
     display: flex;
     flex-wrap: wrap;
     gap: 10px;
     justify-content: center;
     align-items: center;
-    user-select: none;
-  }
-  .tools label {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    font-size: 0.9rem;
   }
   .tools input[type="color"],
   .tools input[type="range"],
   .tools input[type="file"],
   .tools input[type="number"] {
     vertical-align: middle;
-    cursor: pointer;
+  }
+  #title {
+    width: 80%;
+    padding: 0.5rem;
+    margin-top: 1rem;
+    font-size: 1rem;
+  }
+  button, label {
+    user-select: none;
   }
   button {
     padding: 0.5rem 1rem;
@@ -61,7 +54,6 @@
     border-radius: 6px;
     background: #4a90e2;
     color: white;
-    transition: background 0.2s ease;
   }
   button:hover {
     background: #357ac9;
@@ -78,30 +70,6 @@
     font-weight: bold;
     margin-left: 5px;
   }
-  #drawCanvas {
-    border: 2px solid #333;
-    background-color: #fff;
-    touch-action: none;
-    cursor: crosshair;
-    display: block;
-    margin: 1rem auto 0 auto;
-    max-width: 90vw;
-    max-height: 70vh;
-    box-sizing: border-box;
-  }
-  @media (max-width: 600px) {
-    .tools {
-      flex-direction: column;
-      gap: 8px;
-    }
-    button, input[type="number"], input[type="range"] {
-      width: 90vw;
-      max-width: 350px;
-    }
-    #title {
-      width: 90vw;
-    }
-  }
 </style>
 </head>
 <body>
@@ -109,508 +77,375 @@
 
   <input type="text" id="title" placeholder="Titre de l'œuvre (optionnel)" />
 
-  <div class="tools" role="region" aria-label="Outils de dessin et texte">
-    <label for="modeToggle">Mode :
-      <button id="modeToggle" class="active" aria-pressed="true" aria-label="Changer le mode entre dessin, navigation et texte">Dessin</button>
+  <div class="tools">
+    <label>Mode :
+      <button id="modeToggle" class="active">Dessin</button>
     </label>
 
-    <label for="colorPicker">Couleur :
-      <input type="color" id="colorPicker" value="#000000" aria-label="Sélecteur de couleur" />
+    <label>Couleur:
+      <input type="color" id="colorPicker" value="#000000" />
     </label>
 
-    <label for="sizePicker">Taille :
-      <input type="range" id="sizePicker" min="0.1" max="100" step="0.1" value="5" aria-valuemin="0.1" aria-valuemax="100" aria-valuenow="5" aria-label="Taille du pinceau ou texte" />
-      <input type="number" id="sizeNumber" min="0.1" max="100" step="0.1" value="5" style="width:60px;" aria-label="Taille du pinceau ou texte en nombre" />
-      <span id="brushSizeDisplay" aria-live="polite">5 px</span>
+    <label>Taille:
+      <input type="range" id="sizePicker" min="0.1" max="100" step="0.1" value="5" />
+      <input type="number" id="sizeNumber" min="0.1" max="100" step="0.1" value="5" style="width:60px;" />
+      <span id="brushSizeDisplay">5 px</span>
     </label>
 
-    <label for="bgColorPicker">Fond :
-      <input type="color" id="bgColorPicker" value="#ffffff" aria-label="Sélecteur de couleur de fond" />
+    <label>Fond:
+      <input type="color" id="bgColorPicker" value="#ffffff" />
     </label>
 
-    <label for="bgImagePicker">Image de fond :
-      <input type="file" id="bgImagePicker" accept="image/*" aria-label="Choisir une image de fond" />
+    <label>Image de fond:
+      <input type="file" id="bgImagePicker" accept="image/*" />
     </label>
 
-    <button id="removeBgBtn" title="Supprimer l'image de fond" aria-label="Supprimer l'image de fond">❌</button>
-    <button id="undoBtn" title="Annuler dernier trait" aria-label="Annuler dernier trait dessiné">↩️</button>
-    <button id="clearBtn" title="Effacer tout" aria-label="Effacer tout le dessin et texte">🧽</button>
-    <button id="screenshotBtn" title="Télécharger" aria-label="Télécharger l'image finale">📥</button>
+    <button id="removeBgBtn" title="Supprimer l'image de fond">❌</button>
+    <button id="undoBtn" title="Annuler dernier trait">↩️</button>
+    <button id="clearBtn" title="Effacer tout">🧽</button>
+    <button id="screenshotBtn" title="Télécharger">📥</button>
   </div>
 
-  <canvas id="drawCanvas" width="600" height="600" role="img" aria-label="Zone de dessin interactive"></canvas>
+  <canvas id="drawCanvas" width="350" height="350"></canvas>
 
 <script>
-(() => {
-  "use strict";
+const canvas = document.getElementById("drawCanvas");
+const ctx = canvas.getContext("2d");
 
-  // Récupération des éléments DOM
-  const canvas = document.getElementById("drawCanvas");
-  const ctx = canvas.getContext("2d");
+const colorPicker = document.getElementById("colorPicker");
+const sizePicker = document.getElementById("sizePicker");
+const sizeNumber = document.getElementById("sizeNumber");
+const brushSizeDisplay = document.getElementById("brushSizeDisplay");
+const clearBtn = document.getElementById("clearBtn");
+const undoBtn = document.getElementById("undoBtn");
+const screenshotBtn = document.getElementById("screenshotBtn");
+const titleInput = document.getElementById("title");
+const bgColorPicker = document.getElementById("bgColorPicker");
+const bgImagePicker = document.getElementById("bgImagePicker");
+const removeBgBtn = document.getElementById("removeBgBtn");
+const modeToggle = document.getElementById("modeToggle");
 
-  const colorPicker = document.getElementById("colorPicker");
-  const sizePicker = document.getElementById("sizePicker");
-  const sizeNumber = document.getElementById("sizeNumber");
-  const brushSizeDisplay = document.getElementById("brushSizeDisplay");
-  const clearBtn = document.getElementById("clearBtn");
-  const undoBtn = document.getElementById("undoBtn");
-  const screenshotBtn = document.getElementById("screenshotBtn");
-  const titleInput = document.getElementById("title");
-  const bgColorPicker = document.getElementById("bgColorPicker");
-  const bgImagePicker = document.getElementById("bgImagePicker");
-  const removeBgBtn = document.getElementById("removeBgBtn");
-  const modeToggle = document.getElementById("modeToggle");
+let painting = false;
+let paths = [];
+let currentPath = [];
 
-  // Variables état dessin
-  let painting = false;
-  let paths = [];
-  let currentPath = [];
+let bgColor = "#ffffff";
+let bgImage = null;
 
-  // Fond et zoom/pan
-  let bgColor = "#ffffff";
-  let bgImage = null;
+let scale = 1;
+let offsetX = 0;
+let offsetY = 0;
+let lastDist = null;
+let lastMidpoint = null;
+let isPanning = false;
+let mode = "draw";
+let texts = [];
 
-  let scale = 1;
-  let offsetX = 0;
-  let offsetY = 0;
-  let lastDist = null;
-  let lastMidpoint = null;
-  let isPanning = false;
+let selectedTextIndex = null;
+let isDraggingText = false;
+let lastTouchOrMouse = null;
 
-  // Mode : draw, pan (navigation), text
-  let mode = "draw";
+function clampOffsets() {
+  const widthScaled = canvas.width * scale;
+  const heightScaled = canvas.height * scale;
 
-  // Gestion des textes : tableau d'objets {text, x, y, color, size}
-  let texts = [];
+  offsetX = widthScaled > canvas.width ? Math.min(0, Math.max(offsetX, canvas.width - widthScaled)) : 0;
+  offsetY = heightScaled > canvas.height ? Math.min(0, Math.max(offsetY, canvas.height - heightScaled)) : 0;
+}
 
-  // Texte sélectionné + drag
-  let selectedTextIndex = null;
-  let isDraggingText = false;
-  let lastTouchOrMouse = null;
+function screenToCanvas(x, y) {
+  return { x: (x - offsetX) / scale, y: (y - offsetY) / scale };
+}
 
-  /**
-   * Contraint offsetX et offsetY pour éviter de sortir des limites
-   */
-  function clampOffsets() {
-    const widthScaled = canvas.width * scale;
-    const heightScaled = canvas.height * scale;
+function drawBackground(ctxTarget) {
+  ctxTarget.fillStyle = bgColor;
+  ctxTarget.fillRect(0, 0, canvas.width, canvas.height);
+  if (bgImage) ctxTarget.drawImage(bgImage, 0, 0, canvas.width, canvas.height);
+}
 
-    offsetX = widthScaled > canvas.width ? Math.min(0, Math.max(offsetX, canvas.width - widthScaled)) : 0;
-    offsetY = heightScaled > canvas.height ? Math.min(0, Math.max(offsetY, canvas.height - heightScaled)) : 0;
-  }
+function redrawCanvas() {
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.translate(offsetX, offsetY);
+  ctx.scale(scale, scale);
+  drawBackground(ctx);
 
-  /**
-   * Convertit coordonnées écran en coordonnées canvas selon scale et offset
-   * @param {number} x 
-   * @param {number} y 
-   * @returns {{x:number,y:number}}
-   */
-  function screenToCanvas(x, y) {
-    return { x: (x - offsetX) / scale, y: (y - offsetY) / scale };
-  }
-
-  /**
-   * Dessine le fond (couleur + image si présente)
-   * @param {CanvasRenderingContext2D} ctxTarget 
-   */
-  function drawBackground(ctxTarget) {
-    ctxTarget.fillStyle = bgColor;
-    ctxTarget.fillRect(0, 0, canvas.width, canvas.height);
-    if (bgImage) ctxTarget.drawImage(bgImage, 0, 0, canvas.width, canvas.height);
-  }
-
-  /**
-   * Redessine tout : fond, paths, textes
-   */
-  function redraw() {
-    ctx.save();
-    ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset transform pour fond
-    drawBackground(ctx);
-    ctx.restore();
-
-    // Appliquer zoom & pan
-    ctx.setTransform(scale, 0, 0, scale, offsetX, offsetY);
-
-    // Dessiner chemins
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    for (const path of paths) {
-      if (path.length < 2) continue;
-      ctx.strokeStyle = path.color;
-      ctx.lineWidth = path.size;
-      ctx.beginPath();
-      ctx.moveTo(path[0].x, path[0].y);
-      for (let i = 1; i < path.length; i++) {
-        ctx.lineTo(path[i].x, path[i].y);
-      }
+  for (const path of paths) {
+    ctx.beginPath();
+    ctx.globalCompositeOperation = 'source-over';
+    for (let i = 0; i < path.length; i++) {
+      const point = path[i];
+      ctx.lineWidth = point.size;
+      ctx.strokeStyle = point.color;
+      ctx.shadowBlur = 0;
+      ctx.shadowColor = "transparent";
+      if (i === 0) ctx.moveTo(point.x, point.y);
+      else ctx.lineTo(point.x, point.y);
       ctx.stroke();
     }
-
-    // Dessiner chemin en cours
-    if (currentPath.length > 1) {
-      ctx.strokeStyle = colorPicker.value;
-      ctx.lineWidth = parseFloat(sizePicker.value);
-      ctx.beginPath();
-      ctx.moveTo(currentPath[0].x, currentPath[0].y);
-      for (let i = 1; i < currentPath.length; i++) {
-        ctx.lineTo(currentPath[i].x, currentPath[i].y);
-      }
-      ctx.stroke();
-    }
-
-    // Dessiner textes
-    for (let i = 0; i < texts.length; i++) {
-      const t = texts[i];
-      ctx.font = `${t.size}px Arial, sans-serif`;
-      ctx.fillStyle = t.color;
-      ctx.textBaseline = "top";
-      ctx.fillText(t.text, t.x, t.y);
-      if (i === selectedTextIndex) {
-        // Surbrillance texte sélectionné
-        const width = ctx.measureText(t.text).width;
-        ctx.strokeStyle = "rgba(0,0,255,0.7)";
-        ctx.lineWidth = 2 / scale;
-        ctx.strokeRect(t.x - 4 / scale, t.y - 2 / scale, width + 8 / scale, t.size + 4 / scale);
-      }
-    }
   }
 
-  /**
-   * Commence le dessin d'un chemin
-   */
-  function startDrawing(x, y) {
-    if (mode !== "draw") return;
-    painting = true;
-    currentPath = [{ x, y }];
-  }
+  for (let i = 0; i < texts.length; i++) {
+    const t = texts[i];
+    ctx.fillStyle = t.color;
+    ctx.font = `${t.size}px sans-serif`;
+    ctx.fillText(t.text, t.x, t.y);
 
-  /**
-   * Continue le dessin d'un chemin
-   */
-  function drawLine(x, y) {
-    if (!painting) return;
-    currentPath.push({ x, y });
-    redraw();
-  }
-
-  /**
-   * Termine le dessin d'un chemin
-   */
-  function endDrawing() {
-    if (!painting) return;
-    painting = false;
-    if (currentPath.length > 1) {
-      const pathObj = {
-        color: colorPicker.value,
-        size: parseFloat(sizePicker.value),
-        ... // fixed: paths is array of arrays of points; now storing object with color, size, and points
-      };
-      // Correction : stocker chaque path comme un objet {color, size, points: [...]}
-      pathObj.points = [...currentPath];
-      paths.push(pathObj);
-    }
-    currentPath = [];
-    redraw();
-  }
-
-  /**
-   * Cherche un texte sous la position donnée (canvas coords)
-   * Retourne l’index ou null
-   */
-  function findTextAtPos(x, y) {
-    for (let i = texts.length - 1; i >= 0; i--) {
-      const t = texts[i];
-      ctx.font = `${t.size}px Arial, sans-serif`;
+    if (i === selectedTextIndex) {
       const width = ctx.measureText(t.text).width;
       const height = t.size;
-      if (
-        x >= t.x && x <= t.x + width &&
-        y >= t.y && y <= t.y + height
-      ) return i;
+      ctx.strokeStyle = "red";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(t.x, t.y - height, width, height);
     }
-    return null;
   }
 
-  /**
-   * Ajoute un nouveau texte à la position donnée (canvas coords)
-   */
-  function addTextAtPos(x, y) {
-    const textContent = prompt("Entrez le texte à ajouter :", "");
-    if (!textContent) return;
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.beginPath();
+}
+
+function startDraw(e) {
+  if (mode !== "draw") return;
+  if (e.touches && e.touches.length > 1) return;
+  e.preventDefault();
+  painting = true;
+  currentPath = [];
+  ctx.beginPath();
+  draw(e);
+}
+
+function draw(e) {
+  if (!painting) return;
+  e.preventDefault();
+  let clientX = e.touches ? e.touches[0].clientX : e.clientX;
+  let clientY = e.touches ? e.touches[0].clientY : e.clientY;
+  const rect = canvas.getBoundingClientRect();
+  const pos = screenToCanvas(clientX - rect.left, clientY - rect.top);
+
+  ctx.lineWidth = sizePicker.value;
+  ctx.lineCap = "round";
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.strokeStyle = colorPicker.value;
+  ctx.shadowBlur = 0;
+  ctx.shadowColor = "transparent";
+
+  ctx.lineTo(pos.x, pos.y);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(pos.x, pos.y);
+
+  currentPath.push({ x: pos.x, y: pos.y, color: ctx.strokeStyle, size: ctx.lineWidth });
+}
+
+function endDraw(e) {
+  if (!painting) return;
+  painting = false;
+  ctx.beginPath();
+  if (currentPath.length) paths.push([...currentPath]);
+}
+
+function getTextAtPosition(pos) {
+  for (let i = texts.length - 1; i >= 0; i--) {
+    const t = texts[i];
+    ctx.font = `${t.size}px sans-serif`;
+    const width = ctx.measureText(t.text).width;
+    const height = t.size;
+    if (pos.x >= t.x && pos.x <= t.x + width && pos.y <= t.y && pos.y >= t.y - height) return i;
+  }
+  return null;
+}
+
+canvas.addEventListener("mousedown", (e) => {
+  if (mode === "draw") return startDraw(e);
+  if (mode === "pan") {
+    const rect = canvas.getBoundingClientRect();
+    const pos = screenToCanvas(e.clientX - rect.left, e.clientY - rect.top);
+    const index = getTextAtPosition(pos);
+    if (index !== null) {
+      selectedTextIndex = index;
+      isDraggingText = true;
+      lastTouchOrMouse = pos;
+      redrawCanvas();
+    } else {
+      selectedTextIndex = null;
+      redrawCanvas();
+    }
+  }
+});
+
+canvas.addEventListener("mousemove", (e) => {
+  if (mode === "draw") return draw(e);
+  if (mode === "pan" && isDraggingText && selectedTextIndex !== null) {
+    const rect = canvas.getBoundingClientRect();
+    const pos = screenToCanvas(e.clientX - rect.left, e.clientY - rect.top);
+    const dx = pos.x - lastTouchOrMouse.x;
+    const dy = pos.y - lastTouchOrMouse.y;
+    texts[selectedTextIndex].x += dx;
+    texts[selectedTextIndex].y += dy;
+    lastTouchOrMouse = pos;
+    redrawCanvas();
+  }
+});
+
+canvas.addEventListener("mouseup", () => {
+  if (mode === "draw") endDraw();
+  isDraggingText = false;
+});
+
+modeToggle.addEventListener("click", () => {
+  mode = mode === "draw" ? "pan" : mode === "pan" ? "text" : "draw";
+  modeToggle.textContent = mode === "draw" ? "Dessin" : mode === "pan" ? "Navigation" : "Texte";
+  modeToggle.classList.toggle("active", mode === "draw");
+  canvas.style.cursor = mode === "draw" ? "crosshair" : mode === "text" ? "text" : "grab";
+  painting = false;
+});
+
+canvas.addEventListener("click", (e) => {
+  if (mode !== "text") return;
+  const rect = canvas.getBoundingClientRect();
+  const pos = screenToCanvas(e.clientX - rect.left, e.clientY - rect.top);
+  const text = prompt("Texte à ajouter :");
+  if (text) {
     texts.push({
-      text: textContent,
-      x,
-      y,
+      text: text,
+      x: pos.x,
+      y: pos.y,
       color: colorPicker.value,
-      size: parseFloat(sizePicker.value),
+      size: parseFloat(sizePicker.value)
     });
-    selectedTextIndex = texts.length - 1;
-    redraw();
+    redrawCanvas();
   }
+});
 
-  /**
-   * Mise à jour de l’affichage de la taille
-   */
-  function updateSizeDisplay(value) {
-    brushSizeDisplay.textContent = `${value} px`;
-  }
+bgColorPicker.addEventListener("input", e => { bgColor = e.target.value; redrawCanvas(); });
+bgImagePicker.addEventListener("change", e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const img = new Image();
+  img.onload = () => { bgImage = img; redrawCanvas(); };
+  img.src = URL.createObjectURL(file);
+});
+removeBgBtn.addEventListener("click", () => { bgImage = null; bgImagePicker.value = null; redrawCanvas(); });
 
-  // Synchro entre range et number
-  sizePicker.addEventListener("input", () => {
-    sizeNumber.value = sizePicker.value;
-    updateSizeDisplay(sizePicker.value);
-  });
-  sizeNumber.addEventListener("input", () => {
-    let val = parseFloat(sizeNumber.value);
-    if (isNaN(val) || val < parseFloat(sizePicker.min)) val = parseFloat(sizePicker.min);
-    else if (val > parseFloat(sizePicker.max)) val = parseFloat(sizePicker.max);
-    sizeNumber.value = val;
-    sizePicker.value = val;
-    updateSizeDisplay(val);
-  });
-
-  // Gestion du mode dessin / texte / navigation
-  modeToggle.addEventListener("click", () => {
-    if (mode === "draw") {
-      mode = "text";
-      modeToggle.textContent = "Texte";
-      modeToggle.classList.remove("active");
-      modeToggle.setAttribute("aria-pressed", "false");
-      canvas.style.cursor = "text";
-      selectedTextIndex = null;
-      redraw();
-    } else if (mode === "text") {
-      mode = "pan";
-      modeToggle.textContent = "Navigation";
-      modeToggle.setAttribute("aria-pressed", "false");
-      modeToggle.classList.remove("active");
-      canvas.style.cursor = "grab";
-      selectedTextIndex = null;
-      redraw();
-    } else {
-      mode = "draw";
-      modeToggle.textContent = "Dessin";
-      modeToggle.classList.add("active");
-      modeToggle.setAttribute("aria-pressed", "true");
-      canvas.style.cursor = "crosshair";
-      selectedTextIndex = null;
-      redraw();
-    }
-  });
-
-  // Gestion du fond couleur
-  bgColorPicker.addEventListener("input", () => {
-    bgColor = bgColorPicker.value;
-    redraw();
-  });
-
-  // Gestion image de fond
-  bgImagePicker.addEventListener("change", e => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const img = new Image();
-    img.onload = () => {
-      bgImage = img;
-      redraw();
-    };
-    img.onerror = () => alert("Erreur lors du chargement de l'image");
-    img.src = URL.createObjectURL(file);
-  });
-
-  removeBgBtn.addEventListener("click", () => {
-    bgImage = null;
-    bgImagePicker.value = "";
-    redraw();
-  });
-
-  // Undo
-  undoBtn.addEventListener("click", () => {
-    if (mode === "draw" && paths.length) {
-      paths.pop();
-      redraw();
-    } else if (mode === "text" && texts.length) {
-      texts.pop();
-      redraw();
-    }
-  });
-
-  // Clear
-  clearBtn.addEventListener("click", () => {
-    if (confirm("Effacer tout le dessin et le texte ?")) {
-      paths = [];
-      texts = [];
-      bgImage = null;
-      bgImagePicker.value = "";
-      redraw();
-    }
-  });
-
-  // Screenshot : image finale avec fond, paths, textes, titre
-  screenshotBtn.addEventListener("click", () => {
-    const exportCanvas = document.createElement("canvas");
-    exportCanvas.width = canvas.width;
-    exportCanvas.height = canvas.height;
-    const exportCtx = exportCanvas.getContext("2d");
-
-    // Fond couleur et image
-    exportCtx.fillStyle = bgColor;
-    exportCtx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
-    if (bgImage) exportCtx.drawImage(bgImage, 0, 0, exportCanvas.width, exportCanvas.height);
-
-    // Dessiner chemins
-    for (const path of paths) {
-      if (path.points.length < 2) continue;
-      exportCtx.strokeStyle = path.color;
-      exportCtx.lineWidth = path.size;
-      exportCtx.lineCap = "round";
-      exportCtx.lineJoin = "round";
-      exportCtx.beginPath();
-      exportCtx.moveTo(path.points[0].x, path.points[0].y);
-      for (let i = 1; i < path.points.length; i++) {
-        exportCtx.lineTo(path.points[i].x, path.points[i].y);
-      }
-      exportCtx.stroke();
-    }
-
-    // Dessiner textes
-    for (const t of texts) {
-      exportCtx.font = `${t.size}px Arial, sans-serif`;
-      exportCtx.fillStyle = t.color;
-      exportCtx.textBaseline = "top";
-      exportCtx.fillText(t.text, t.x, t.y);
-    }
-
-    // Dessiner titre (au-dessus)
-    const title = titleInput.value.trim();
-    if (title) {
-      exportCtx.font = "bold 24px Arial, sans-serif";
-      exportCtx.fillStyle = "#222";
-      exportCtx.textAlign = "center";
-      exportCtx.fillText(title, exportCanvas.width / 2, 20);
-    }
-
-    // Télécharger image
-    exportCanvas.toBlob(blob => {
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = (title || "oeuvre") + ".png";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    });
-  });
-
-  // Gestion du dessin et interaction avec la souris et tactile
-  function onPointerDown(e) {
+canvas.addEventListener("touchstart", (e) => {
+  if (mode === "pan" && e.touches.length === 2) {
     e.preventDefault();
-
-    if (mode === "draw") {
-      const pos = screenToCanvas(e.clientX, e.clientY);
-      startDrawing(pos.x, pos.y);
-    } else if (mode === "text") {
-      const pos = screenToCanvas(e.clientX, e.clientY);
-      const idx = findTextAtPos(pos.x, pos.y);
-      if (idx !== null) {
-        selectedTextIndex = idx;
-        isDraggingText = true;
-        lastTouchOrMouse = { x: e.clientX, y: e.clientY };
-        redraw();
-      } else {
-        addTextAtPos(pos.x, pos.y);
-      }
-    } else if (mode === "pan") {
-      isPanning = true;
-      lastTouchOrMouse = { x: e.clientX, y: e.clientY };
-      canvas.style.cursor = "grabbing";
-    }
+    lastDist = getDistance(e.touches);
+    lastMidpoint = getMidpoint(e.touches);
+    isPanning = true;
+  } else if (mode === "draw" && e.touches.length === 1) {
+    startDraw(e);
   }
+}, { passive: false });
 
-  function onPointerMove(e) {
+function getDistance(touches) {
+  const dx = touches[0].clientX - touches[1].clientX;
+  const dy = touches[0].clientY - touches[1].clientY;
+  return Math.hypot(dx, dy);
+}
+function getMidpoint(touches) {
+  return {
+    x: (touches[0].clientX + touches[1].clientX) / 2,
+    y: (touches[0].clientY + touches[1].clientY) / 2
+  };
+}
+
+canvas.addEventListener("touchmove", (e) => {
+  if (mode === "pan" && e.touches.length === 2 && isPanning) {
     e.preventDefault();
+    const dist = getDistance(e.touches);
+    const midpoint = getMidpoint(e.touches);
+    const zoomFactor = dist / lastDist;
+    let newScale = Math.min(Math.max(scale * zoomFactor, 1), 75);
 
-    if (mode === "draw" && painting) {
-      const pos = screenToCanvas(e.clientX, e.clientY);
-      drawLine(pos.x, pos.y);
-    } else if (mode === "text" && isDraggingText && selectedTextIndex !== null) {
-      const dx = (e.clientX - lastTouchOrMouse.x) / scale;
-      const dy = (e.clientY - lastTouchOrMouse.y) / scale;
-      texts[selectedTextIndex].x += dx;
-      texts[selectedTextIndex].y += dy;
-      lastTouchOrMouse = { x: e.clientX, y: e.clientY };
-      redraw();
-    } else if (mode === "pan" && isPanning) {
-      const dx = e.clientX - lastTouchOrMouse.x;
-      const dy = e.clientY - lastTouchOrMouse.y;
-      offsetX += dx;
-      offsetY += dy;
-      clampOffsets();
-      lastTouchOrMouse = { x: e.clientX, y: e.clientY };
-      redraw();
-    }
-  }
-
-  function onPointerUp(e) {
-    e.preventDefault();
-    if (mode === "draw") {
-      endDrawing();
-    } else if (mode === "text") {
-      isDraggingText = false;
-    } else if (mode === "pan") {
-      isPanning = false;
-      canvas.style.cursor = "grab";
-    }
-  }
-
-  // Zoom par molette, centré sur la souris
-  function onWheel(e) {
-    e.preventDefault();
-    const wheelDelta = e.deltaY;
-    const mouseX = e.clientX;
-    const mouseY = e.clientY;
-    const zoomFactor = 1.1;
-
-    const prevScale = scale;
-    if (wheelDelta < 0) {
-      scale *= zoomFactor;
-    } else {
-      scale /= zoomFactor;
-    }
-    scale = Math.min(Math.max(scale, 0.1), 10);
-
-    // Ajuster offset pour zoom centré
-    const mx = (mouseX - offsetX) / prevScale;
-    const my = (mouseY - offsetY) / prevScale;
-    offsetX = mouseX - mx * scale;
-    offsetY = mouseY - my * scale;
-
+    const rect = canvas.getBoundingClientRect();
+    const midCanvasBefore = screenToCanvas(midpoint.x - rect.left, midpoint.y - rect.top);
+    scale = newScale;
     clampOffsets();
-    redraw();
+    const midCanvasAfter = screenToCanvas(midpoint.x - rect.left, midpoint.y - rect.top);
+
+    offsetX += (midCanvasAfter.x - midCanvasBefore.x) * scale;
+    offsetY += (midCanvasAfter.y - midCanvasBefore.y) * scale;
+    offsetX += midpoint.x - lastMidpoint.x;
+    offsetY += midpoint.y - lastMidpoint.y;
+    clampOffsets();
+
+    lastDist = dist;
+    lastMidpoint = midpoint;
+
+    redrawCanvas();
+  } else if (mode === "draw" && e.touches.length === 1) {
+    draw(e);
+  }
+}, { passive: false });
+
+canvas.addEventListener("touchend", (e) => {
+  if (mode === "pan" && e.touches.length < 2) {
+    isPanning = false;
+    lastDist = null;
+    lastMidpoint = null;
+  }
+  if (mode === "draw" && e.touches.length === 0) endDraw(e);
+});
+
+clearBtn.addEventListener("click", () => { paths = []; texts = []; redrawCanvas(); });
+undoBtn.addEventListener("click", () => { paths.pop(); redrawCanvas(); });
+
+screenshotBtn.addEventListener("click", () => {
+  const title = titleInput.value.trim();
+  const filename = title ? `${title}.png` : "dessin.png";
+  const tempCanvas = document.createElement("canvas");
+  const tempCtx = tempCanvas.getContext("2d");
+  tempCanvas.width = canvas.width;
+  tempCanvas.height = canvas.height;
+
+  drawBackground(tempCtx);
+  for (const path of paths) {
+    tempCtx.beginPath();
+    for (let i = 0; i < path.length; i++) {
+      const point = path[i];
+      tempCtx.lineWidth = point.size;
+      tempCtx.strokeStyle = point.color;
+      tempCtx.shadowBlur = 0;
+      tempCtx.shadowColor = "transparent";
+      if (i === 0) tempCtx.moveTo(point.x, point.y);
+      else tempCtx.lineTo(point.x, point.y);
+      tempCtx.stroke();
+    }
+  }
+  for (const t of texts) {
+    tempCtx.fillStyle = t.color;
+    tempCtx.font = `${t.size}px sans-serif`;
+    tempCtx.fillText(t.text, t.x, t.y);
   }
 
-  // Événements pointer
-  canvas.addEventListener("pointerdown", onPointerDown);
-  canvas.addEventListener("pointermove", onPointerMove);
-  canvas.addEventListener("pointerup", onPointerUp);
-  canvas.addEventListener("pointercancel", onPointerUp);
-  canvas.addEventListener("pointerleave", onPointerUp);
-  canvas.addEventListener("wheel", onWheel, { passive: false });
+  const link = document.createElement("a");
+  link.download = filename;
+  link.href = tempCanvas.toDataURL("image/png");
+  link.click();
+});
 
-  // Initialisation
-  function init() {
-    canvas.width = 600;
-    canvas.height = 600;
-    bgColor = bgColorPicker.value;
-    scale = 1;
-    offsetX = 0;
-    offsetY = 0;
-    redraw();
+// Ajout demandé : changer taille texte sélectionné
+sizePicker.addEventListener("input", () => {
+  sizeNumber.value = sizePicker.value;
+  brushSizeDisplay.textContent = `${sizePicker.value} px`;
+
+  if (selectedTextIndex !== null && mode === "pan") {
+    texts[selectedTextIndex].size = parseFloat(sizePicker.value);
+    redrawCanvas();
   }
+});
+sizeNumber.addEventListener("input", () => {
+  sizePicker.value = sizeNumber.value;
+  brushSizeDisplay.textContent = `${sizeNumber.value} px`;
 
-  init();
+  if (selectedTextIndex !== null && mode === "pan") {
+    texts[selectedTextIndex].size = parseFloat(sizeNumber.value);
+    redrawCanvas();
+  }
+});
 
-})();
+redrawCanvas();
 </script>
 </body>
 </html>
