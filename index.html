@@ -1,111 +1,95 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
-<title>Dessiner ton œuvre</title>
-<style>
-  body {
-    background: #f0f0f0;
-    font-family: Arial, sans-serif;
-    padding: 1rem;
-    text-align: center;
-    -webkit-user-select:none;
-    -moz-user-select:none;
-    -ms-user-select:none;
-    user-select:none;
-  }
-  canvas {
-    border: 2px solid #333;
-    background-color: #fff;
-    touch-action: none;
-    cursor: crosshair;
-    display: block;
-    margin: auto;
-  }
-  .tools {
-    margin-top: 1rem;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-    justify-content: center;
-    align-items: center;
-  }
-  .tools input[type="color"],
-  .tools input[type="range"],
-  .tools input[type="file"],
-  .tools input[type="number"] {
-    vertical-align: middle;
-  }
-  #title {
-    width: 80%;
-    padding: 0.5rem;
-    margin-top: 1rem;
-    font-size: 1rem;
-  }
-  button, label {
-    user-select: none;
-  }
-  button {
-    padding: 0.5rem 1rem;
-    font-size: 1rem;
-    cursor: pointer;
-    border: none;
-    border-radius: 6px;
-    background: #4a90e2;
-    color: white;
-  }
-  button:hover {
-    background: #357ac9;
-  }
-  #modeToggle {
-    background: #ff9800;
-  }
-  #modeToggle.active {
-    background: #388e3c;
-  }
-  #brushSizeDisplay {
-    display: inline-block;
-    min-width: 40px;
-    font-weight: bold;
-    margin-left: 5px;
-  }
-</style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+  <title>Dessiner ton œuvre</title>
+  <style>
+    body {
+      background: #f0f0f0;
+      font-family: Arial, sans-serif;
+      padding: 1rem;
+      text-align: center;
+      -webkit-user-select: none;
+      -moz-user-select: none;
+      -ms-user-select: none;
+      user-select: none;
+    }
+    canvas {
+      border: 2px solid #333;
+      background-color: #fff;
+      touch-action: none;
+      cursor: crosshair;
+      display: block;
+      margin: auto;
+    }
+    .tools {
+      margin-top: 1rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: center;
+      align-items: center;
+    }
+    .tools input[type="color"],
+    .tools input[type="range"],
+    .tools input[type="file"],
+    .tools input[type="number"] {
+      vertical-align: middle;
+    }
+    #title {
+      width: 80%;
+      padding: 0.5rem;
+      margin-top: 1rem;
+      font-size: 1rem;
+    }
+    button, label {
+      user-select: none;
+    }
+    button {
+      padding: 0.5rem 1rem;
+      font-size: 1rem;
+      cursor: pointer;
+      border: none;
+      border-radius: 6px;
+      background: #4a90e2;
+      color: white;
+    }
+    button:hover {
+      background: #357ac9;
+    }
+    #modeToggle {
+      background: #ff9800;
+    }
+    #modeToggle.active {
+      background: #388e3c;
+    }
+    #brushSizeDisplay {
+      display: inline-block;
+      min-width: 40px;
+      font-weight: bold;
+      margin-left: 5px;
+    }
+  </style>
 </head>
 <body>
   <h1>🖌️ Crée ton œuvre</h1>
-
   <input type="text" id="title" placeholder="Titre de l'œuvre (optionnel)" />
-
   <div class="tools">
-    <label>Mode :
-      <button id="modeToggle" class="active">Dessin</button>
-    </label>
-
-    <label>Couleur:
-      <input type="color" id="colorPicker" value="#000000" />
-    </label>
-
+    <label>Mode : <button id="modeToggle" class="active">Dessin</button></label>
+    <label>Couleur: <input type="color" id="colorPicker" value="#000000" /></label>
     <label>Taille:
       <input type="range" id="sizePicker" min="0.1" max="100" step="0.1" value="5" />
       <input type="number" id="sizeNumber" min="0.1" max="100" step="0.1" value="5" style="width:60px;" />
       <span id="brushSizeDisplay">5 px</span>
     </label>
-
-    <label>Fond:
-      <input type="color" id="bgColorPicker" value="#ffffff" />
-    </label>
-
-    <label>Image de fond:
-      <input type="file" id="bgImagePicker" accept="image/*" />
-    </label>
-
+    <label>Fond: <input type="color" id="bgColorPicker" value="#ffffff" /></label>
+    <label>Image de fond: <input type="file" id="bgImagePicker" accept="image/*" /></label>
     <button id="removeBgBtn" title="Supprimer l'image de fond">❌</button>
     <button id="undoBtn" title="Annuler dernier trait">↩️</button>
     <button id="clearBtn" title="Effacer tout">🧽</button>
     <button id="screenshotBtn" title="Télécharger">📥</button>
   </div>
-
   <canvas id="drawCanvas" width="350" height="350"></canvas>
 
 <script>
