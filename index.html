@@ -34,7 +34,7 @@
   .tools input[type="color"],
   .tools input[type="range"],
   .tools input[type="file"],
-  .tools input[type="number"] {
+  .tools input[type="text"] {
     vertical-align: middle;
   }
   #title {
@@ -58,10 +58,10 @@
   button:hover {
     background: #357ac9;
   }
-  #modeToggle {
+  #modeToggle, #modeText {
     background: #ff9800;
   }
-  #modeToggle.active {
+  #modeToggle.active, #modeText.active {
     background: #388e3c;
   }
   #brushSizeDisplay {
@@ -69,6 +69,13 @@
     min-width: 40px;
     font-weight: bold;
     margin-left: 5px;
+    cursor: pointer;
+    user-select:none;
+  }
+  #textInput {
+    padding: 0.3rem 0.5rem;
+    font-size: 1rem;
+    width: 200px;
   }
 </style>
 </head>
@@ -80,6 +87,7 @@
   <div class="tools">
     <label>Mode :
       <button id="modeToggle" class="active">Dessin</button>
+      <button id="modeText">Texte</button>
     </label>
 
     <label>Couleur:
@@ -88,7 +96,6 @@
 
     <label>Taille:
       <input type="range" id="sizePicker" min="0.1" max="100" step="0.1" value="5" />
-      <input type="number" id="sizeNumber" min="0.1" max="100" step="0.1" value="5" style="width:60px;" />
       <span id="brushSizeDisplay">5 px</span>
     </label>
 
@@ -106,6 +113,11 @@
     <button id="screenshotBtn" title="Télécharger">📥</button>
   </div>
 
+  <div style="margin-top: 0.5rem;">
+    <input type="text" id="textInput" placeholder="Texte à ajouter..." />
+    <button id="addTextBtn">➕ Ajouter texte</button>
+  </div>
+
   <canvas id="drawCanvas" width="350" height="350"></canvas>
 
 <script>
@@ -114,7 +126,6 @@
 
   const colorPicker = document.getElementById("colorPicker");
   const sizePicker = document.getElementById("sizePicker");
-  const sizeNumber = document.getElementById("sizeNumber");
   const brushSizeDisplay = document.getElementById("brushSizeDisplay");
   const clearBtn = document.getElementById("clearBtn");
   const undoBtn = document.getElementById("undoBtn");
@@ -124,6 +135,9 @@
   const bgImagePicker = document.getElementById("bgImagePicker");
   const removeBgBtn = document.getElementById("removeBgBtn");
   const modeToggle = document.getElementById("modeToggle");
+  const modeText = document.getElementById("modeText");
+  const textInput = document.getElementById("textInput");
+  const addTextBtn = document.getElementById("addTextBtn");
 
   let painting = false;
   let paths = [];
@@ -138,8 +152,17 @@
   let lastDist = null;
   let lastMidpoint = null;
   let isPanning = false;
-  let mode = "draw"; // "draw", "pan", "text"
+
+  // Mode state: "draw", "nav", "text"
+  let mode = "draw";
+
+  // Text objects: {text, x, y, fontSize, color, selected}
   let texts = [];
+
+  // For navigation & text manipulation
+  let selectedTextIndex = -1;
+  let lastTouch = null; // For moving selected text
+  let lastTouches = null; // For pinch zoom on text
 
   function clampOffsets() {
     const widthScaled = canvas.width * scale;
@@ -165,6 +188,19 @@
     };
   }
 
+  function getDistance(touches) {
+    const dx = touches[0].clientX - touches[1].clientX;
+    const dy = touches[0].clientY - touches[1].clientY;
+    return Math.hypot(dx, dy);
+  }
+
+  function getMidpoint(touches) {
+    return {
+      x: (touches[0].clientX + touches[1].clientX) / 2,
+      y: (touches[0].clientY + touches[1].clientY) / 2
+    };
+  }
+
   function drawBackground(ctxTarget) {
     ctxTarget.fillStyle = bgColor;
     ctxTarget.fillRect(0, 0, canvas.width, canvas.height);
@@ -180,6 +216,7 @@
     ctx.scale(scale, scale);
     drawBackground(ctx);
 
+    // Draw paths
     for (const path of paths) {
       ctx.beginPath();
       ctx.globalCompositeOperation = 'source-over';
@@ -195,9 +232,17 @@
       }
     }
 
-    for (const t of texts) {
+    // Draw texts
+    for (let i = 0; i < texts.length; i++) {
+      const t = texts[i];
+      ctx.font = `${t.fontSize}px Arial`;
       ctx.fillStyle = t.color;
-      ctx.font = `${t.size}px sans-serif`;
+      ctx.textBaseline = "top";
+      if (t.selected) {
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = 'red';
+        ctx.strokeRect(t.x - 2, t.y - 2, ctx.measureText(t.text).width + 4, t.fontSize + 4);
+      }
       ctx.fillText(t.text, t.x, t.y);
     }
 
@@ -205,6 +250,7 @@
     ctx.beginPath();
   }
 
+  // --- Drawing functions ---
   function startDraw(e) {
     if (mode !== "draw") return;
     if (e.touches && e.touches.length > 1) return;
@@ -259,55 +305,275 @@
     }
   }
 
+  // --- Undo / Clear ---
   function undoLast() {
-    paths.pop();
-    redrawCanvas();
+    if (mode === "draw") {
+      paths.pop();
+      redrawCanvas();
+    } else if (mode === "text") {
+      if (selectedTextIndex !== -1) {
+        texts.splice(selectedTextIndex, 1);
+        selectedTextIndex = -1;
+        redrawCanvas();
+      }
+    }
   }
 
   function clearCanvas() {
     paths = [];
     texts = [];
+    selectedTextIndex = -1;
     redrawCanvas();
   }
 
-  modeToggle.addEventListener("click", () => {
-    if (mode === "draw") {
-      mode = "pan";
-      modeToggle.textContent = "Navigation";
-    } else if (mode === "pan") {
-      mode = "text";
-      modeToggle.textContent = "Texte";
-    } else {
-      mode = "draw";
-      modeToggle.textContent = "Dessin";
-    }
-    modeToggle.classList.toggle("active", mode === "draw");
-    canvas.style.cursor = mode === "draw" ? "crosshair" : mode === "text" ? "text" : "grab";
+  // --- Mode switching ---
+  function setMode(newMode) {
+    mode = newMode;
     painting = false;
+    selectedTextIndex = -1;
+    lastTouch = null;
+    lastTouches = null;
+    // Update buttons style & cursor
+    modeToggle.classList.toggle("active", mode === "draw");
+    modeText.classList.toggle("active", mode === "text");
+    canvas.style.cursor = mode === "draw" ? "crosshair" : (mode === "text" ? "text" : "grab");
+    redrawCanvas();
+  }
+
+  modeToggle.addEventListener("click", () => setMode("draw"));
+  modeText.addEventListener("click", () => setMode("text"));
+
+  // --- Add text ---
+  addTextBtn.addEventListener("click", () => {
+    const text = textInput.value.trim();
+    if (!text) return;
+    // Place text at center canvas in canvas coords
+    const x = (canvas.width / 2 - offsetX) / scale;
+    const y = (canvas.height / 2 - offsetY) / scale;
+    texts.push({
+      text,
+      x,
+      y,
+      fontSize: parseFloat(sizePicker.value),
+      color: colorPicker.value,
+      selected: false
+    });
+    textInput.value = "";
+    redrawCanvas();
   });
 
-  canvas.addEventListener("click", (e) => {
+  // --- Text hit test ---
+  function isPointInText(px, py, t) {
+    ctx.font = `${t.fontSize}px Arial`;
+    const width = ctx.measureText(t.text).width;
+    const height = t.fontSize;
+    return (px >= t.x && px <= t.x + width && py >= t.y && py <= t.y + height);
+  }
+
+  // --- Text selection & manipulation in navigation mode ---
+  canvas.addEventListener("touchstart", (e) => {
+    if (mode === "draw") {
+      if (e.touches.length === 1) {
+        startDraw(e);
+      }
+    } else if (mode === "text") {
+      // No drawing in text mode - text added via button
+    } else {
+      // Navigation mode - here mode === "nav" (not used currently but we keep it)
+    }
+
+    if (mode === "text" || mode === "draw") return;
+
+    if (mode === "nav" || mode === "text") {
+      if (e.touches.length === 1) {
+        const rect = canvas.getBoundingClientRect();
+        const pos = screenToCanvas(e.touches[0].clientX - rect.left, e.touches[0].clientY - rect.top);
+
+        // If any text contains point, select it and prepare to move
+        selectedTextIndex = -1;
+        for (let i = texts.length - 1; i >= 0; i--) {
+          if (isPointInText(pos.x, pos.y, texts[i])) {
+            selectedTextIndex = i;
+            texts.forEach((t, idx) => t.selected = (idx === selectedTextIndex));
+            lastTouch = {x: e.touches[0].clientX, y: e.touches[0].clientY};
+            e.preventDefault();
+            redrawCanvas();
+            break;
+          }
+        }
+        if (selectedTextIndex === -1) {
+          // Tap outside any text: deselect
+          texts.forEach(t => t.selected = false);
+          redrawCanvas();
+        }
+      } else if (e.touches.length === 2 && selectedTextIndex !== -1) {
+        // Start pinch zoom on selected text
+        lastDist = getDistance(e.touches);
+        lastMidpoint = getMidpoint(e.touches);
+        lastTouches = [{x: e.touches[0].clientX, y: e.touches[0].clientY}, {x: e.touches[1].clientX, y: e.touches[1].clientY}];
+                e.preventDefault();
+      }
+    }
+  });
+
+  canvas.addEventListener("touchmove", (e) => {
+    if (mode === "draw") {
+      if (painting) draw(e);
+    } else if (mode === "text") {
+      // Pas de dessin en mode texte
+    }
+
     if (mode !== "text") return;
-    const rect = canvas.getBoundingClientRect();
-    const pos = screenToCanvas(e.clientX - rect.left, e.clientY - rect.top);
-    const text = prompt("Texte à ajouter :");
-    if (text) {
-      texts.push({
-        text: text,
-        x: pos.x,
-        y: pos.y,
-        color: colorPicker.value,
-        size: parseFloat(sizePicker.value)
-      });
+
+    if (selectedTextIndex === -1) return;
+
+    if (e.touches.length === 1 && lastTouch) {
+      // Déplacer le texte sélectionné avec un doigt
+      e.preventDefault();
+      const dx = e.touches[0].clientX - lastTouch.x;
+      const dy = e.touches[0].clientY - lastTouch.y;
+      texts[selectedTextIndex].x += dx / scale;
+      texts[selectedTextIndex].y += dy / scale;
+      lastTouch = {x: e.touches[0].clientX, y: e.touches[0].clientY};
+      redrawCanvas();
+    } else if (e.touches.length === 2 && lastDist !== null) {
+      // Pinch zoom texte sélectionné
+      e.preventDefault();
+      const dist = getDistance(e.touches);
+      const midpoint = getMidpoint(e.touches);
+      const scaleChange = dist / lastDist;
+
+      // Ajuster la taille du texte
+      let newSize = texts[selectedTextIndex].fontSize * scaleChange;
+      newSize = Math.min(Math.max(newSize, 5), 200);
+      
+      // Ajuster la position pour zoom autour du midpoint
+      const rect = canvas.getBoundingClientRect();
+      const midpointCanvas = screenToCanvas(midpoint.x - rect.left, midpoint.y - rect.top);
+
+      // Calcul décalage pour garder le point midpoint fixe
+      const dx = (texts[selectedTextIndex].x - midpointCanvas.x) * (scaleChange - 1);
+      const dy = (texts[selectedTextIndex].y - midpointCanvas.y) * (scaleChange - 1);
+
+      texts[selectedTextIndex].fontSize = newSize;
+      texts[selectedTextIndex].x -= dx;
+      texts[selectedTextIndex].y -= dy;
+
+      lastDist = dist;
+      lastMidpoint = midpoint;
       redrawCanvas();
     }
   });
 
-  bgColorPicker.addEventListener("input", (e) => {
-    bgColor = e.target.value;
+  canvas.addEventListener("touchend", (e) => {
+    if (mode === "draw") {
+      endDraw(e);
+    }
+    if (e.touches.length < 2) {
+      lastDist = null;
+      lastMidpoint = null;
+      lastTouches = null;
+    }
+    if (e.touches.length === 0) {
+      lastTouch = null;
+    }
+  });
+
+  // --- Ajuster taille pinceau ou texte en cliquant sur brushSizeDisplay ---
+  brushSizeDisplay.addEventListener("click", () => {
+    if (mode === "text" && selectedTextIndex !== -1) {
+      let newSize = prompt("Entrez la taille du texte en px :", texts[selectedTextIndex].fontSize);
+      newSize = parseFloat(newSize);
+      if (!isNaN(newSize) && newSize >= 5 && newSize <= 200) {
+        texts[selectedTextIndex].fontSize = newSize;
+        redrawCanvas();
+      }
+    } else {
+      // Sinon modifier taille pinceau
+      let newSize = prompt("Entrez la taille du pinceau en px :", sizePicker.value);
+      newSize = parseFloat(newSize);
+      if (!isNaN(newSize) && newSize >= 0.1 && newSize <= 100) {
+        sizePicker.value = newSize;
+        brushSizeDisplay.textContent = newSize + " px";
+      }
+    }
+  });
+
+  // --- Mettre à jour affichage taille pinceau ---
+  sizePicker.addEventListener("input", () => {
+    brushSizeDisplay.textContent = sizePicker.value + " px";
+  });
+
+  // --- Undo bouton ---
+  undoBtn.addEventListener("click", () => {
+    undoLast();
+  });
+
+  // --- Clear bouton ---
+  clearBtn.addEventListener("click", () => {
+    if (confirm("Effacer tout ?")) clearCanvas();
+  });
+
+  // --- Screenshot et téléchargement ---
+  screenshotBtn.addEventListener("click", () => {
+    // Crée une image finale avec tout dessiné
+    const finalCanvas = document.createElement("canvas");
+    finalCanvas.width = canvas.width;
+    finalCanvas.height = canvas.height;
+    const fCtx = finalCanvas.getContext("2d");
+
+    fCtx.fillStyle = bgColor;
+    fCtx.fillRect(0, 0, finalCanvas.width, finalCanvas.height);
+
+    if (bgImage) {
+      fCtx.drawImage(bgImage, 0, 0, finalCanvas.width, finalCanvas.height);
+    }
+
+    // Dessiner les chemins
+    for (const path of paths) {
+      fCtx.beginPath();
+      for (let i = 0; i < path.length; i++) {
+        const point = path[i];
+        fCtx.lineWidth = point.size;
+        fCtx.strokeStyle = point.color;
+        if (i === 0) fCtx.moveTo(point.x, point.y);
+        else fCtx.lineTo(point.x, point.y);
+        fCtx.stroke();
+      }
+    }
+
+    // Dessiner les textes
+    for (const t of texts) {
+      fCtx.font = `${t.fontSize}px Arial`;
+      fCtx.fillStyle = t.color;
+      fCtx.textBaseline = "top";
+      fCtx.fillText(t.text, t.x, t.y);
+    }
+
+    // Ajouter titre si existant
+    if (titleInput.value.trim() !== "") {
+      fCtx.font = "bold 24px Arial";
+      fCtx.fillStyle = "#000000";
+      fCtx.textAlign = "center";
+      fCtx.fillText(titleInput.value.trim(), finalCanvas.width / 2, finalCanvas.height - 30);
+    }
+
+    const dataUrl = finalCanvas.toDataURL("image/png");
+
+    // Télécharger l'image
+    const a = document.createElement("a");
+    a.href = dataUrl;
+    a.download = (titleInput.value.trim() || "dessin") + ".png";
+    a.click();
+  });
+
+  // --- Changer couleur fond ---
+  bgColorPicker.addEventListener("input", () => {
+    bgColor = bgColorPicker.value;
     redrawCanvas();
   });
 
+  // --- Charger image de fond ---
   bgImagePicker.addEventListener("change", (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -321,133 +587,15 @@
 
   removeBgBtn.addEventListener("click", () => {
     bgImage = null;
-    bgImagePicker.value = null;
+    bgImagePicker.value = "";
     redrawCanvas();
   });
 
-  canvas.addEventListener("touchstart", (e) => {
-    if (mode === "pan" && e.touches.length === 2) {
-      e.preventDefault();
-      lastDist = getDistance(e.touches);
-      lastMidpoint = getMidpoint(e.touches);
-      isPanning = true;
-    } else if (mode === "draw" && e.touches.length === 1) {
-      startDraw(e);
-    }
-  }, { passive: false });
-
-  function getDistance(touches) {
-    const dx = touches[0].clientX - touches[1].clientX;
-    const dy = touches[0].clientY - touches[1].clientY;
-    return Math.hypot(dx, dy);
-  }
-
-  function getMidpoint(touches) {
-    return {
-      x: (touches[0].clientX + touches[1].clientX) / 2,
-      y: (touches[0].clientY + touches[1].clientY) / 2
-    };
-  }
-
-  canvas.addEventListener("touchmove", (e) => {
-    if (mode === "pan" && e.touches.length === 2 && isPanning) {
-      e.preventDefault();
-      const dist = getDistance(e.touches);
-      const midpoint = getMidpoint(e.touches);
-      const zoomFactor = dist / lastDist;
-      let newScale = Math.min(Math.max(scale * zoomFactor, 1), 75);
-
-      const rect = canvas.getBoundingClientRect();
-      const midCanvasBefore = screenToCanvas(midpoint.x - rect.left, midpoint.y - rect.top);
-      scale = newScale;
-      clampOffsets();
-      const midCanvasAfter = screenToCanvas(midpoint.x - rect.left, midpoint.y - rect.top);
-
-      offsetX += (midCanvasAfter.x - midCanvasBefore.x) * scale;
-      offsetY += (midCanvasAfter.y - midCanvasBefore.y) * scale;
-      clampOffsets();
-
-      offsetX += midpoint.x - lastMidpoint.x;
-      offsetY += midpoint.y - lastMidpoint.y;
-      clampOffsets();
-
-      lastDist = dist;
-      lastMidpoint = midpoint;
-
-      redrawCanvas();
-    } else if (mode === "draw" && e.touches.length === 1) {
-      draw(e);
-    }
-  }, { passive: false });
-
-  canvas.addEventListener("touchend", (e) => {
-    if (mode === "pan" && e.touches.length < 2) {
-      isPanning = false;
-      lastDist = null;
-      lastMidpoint = null;
-    }
-    if (mode === "draw" && e.touches.length === 0) {
-      endDraw(e);
-    }
-  });
-
-  canvas.addEventListener("mousedown", (e) => { if (mode === "draw") startDraw(e); });
-  canvas.addEventListener("mousemove", (e) => { if (mode === "draw") draw(e); });
-  canvas.addEventListener("mouseup", (e) => { if (mode === "draw") endDraw(e); });
-  canvas.addEventListener("mouseout", (e) => { if (mode === "draw") endDraw(e); });
-
-  screenshotBtn.addEventListener("click", () => {
-    const title = titleInput.value.trim();
-    const filename = title ? `${title}.png` : "dessin.png";
-
-    const tempCanvas = document.createElement("canvas");
-    const tempCtx = tempCanvas.getContext("2d");
-    tempCanvas.width = canvas.width;
-    tempCanvas.height = canvas.height;
-
-    drawBackground(tempCtx);
-
-    for (const path of paths) {
-      tempCtx.beginPath();
-      for (let i = 0; i < path.length; i++) {
-        const point = path[i];
-        tempCtx.lineWidth = point.size;
-        tempCtx.strokeStyle = point.color;
-        tempCtx.shadowBlur = 0;
-        tempCtx.shadowColor = "transparent";
-        if (i === 0) tempCtx.moveTo(point.x, point.y);
-        else tempCtx.lineTo(point.x, point.y);
-        tempCtx.stroke();
-      }
-    }
-
-    for (const t of texts) {
-      tempCtx.fillStyle = t.color;
-      tempCtx.font = `${t.size}px sans-serif`;
-      tempCtx.fillText(t.text, t.x, t.y);
-    }
-
-    const link = document.createElement("a");
-    link.download = filename;
-    link.href = tempCanvas.toDataURL("image/png");
-    link.click();
-  });
-
-  clearBtn.addEventListener("click", clearCanvas);
-  undoBtn.addEventListener("click", undoLast);
-
-  sizePicker.addEventListener("input", () => {
-    sizeNumber.value = sizePicker.value;
-    brushSizeDisplay.textContent = `${sizePicker.value} px`;
-  });
-
-  sizeNumber.addEventListener("input", () => {
-    sizePicker.value = sizeNumber.value;
-    brushSizeDisplay.textContent = `${sizeNumber.value} px`;
-  });
-
+  // --- Initial draw ---
   redrawCanvas();
-</script>
 
+  // --- Mise à jour brushSizeDisplay au chargement ---
+  brushSizeDisplay.textContent = sizePicker.value + " px";
+</script>
 </body>
 </html>
