@@ -80,7 +80,7 @@
     </label>
 
     <label>Taille:
-      <input type="range" id="sizePicker" min="1" max="50" value="5" />
+      <input type="range" id="sizePicker" min="0.1" max="100" value="5" />
     </label>
 
     <label>Fond:
@@ -310,7 +310,7 @@
       const dist = getDistance(e.touches);
       const midpoint = getMidpoint(e.touches);
       const zoomFactor = dist / lastDist;
-      let newScale = Math.min(Math.max(scale * zoomFactor, 1), 25);
+      let newScale = Math.min(Math.max(scale * zoomFactor, 1), 75);
 
       const rect = canvas.getBoundingClientRect();
       const midCanvasBefore = screenToCanvas(midpoint.x - rect.left, midpoint.y - rect.top);
