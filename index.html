@@ -425,13 +425,24 @@ screenshotBtn.addEventListener("click", () => {
   link.click();
 });
 
+// Ajout demandé : changer taille texte sélectionné
 sizePicker.addEventListener("input", () => {
   sizeNumber.value = sizePicker.value;
   brushSizeDisplay.textContent = `${sizePicker.value} px`;
+
+  if (selectedTextIndex !== null && mode === "pan") {
+    texts[selectedTextIndex].size = parseFloat(sizePicker.value);
+    redrawCanvas();
+  }
 });
 sizeNumber.addEventListener("input", () => {
   sizePicker.value = sizeNumber.value;
   brushSizeDisplay.textContent = `${sizeNumber.value} px`;
+
+  if (selectedTextIndex !== null && mode === "pan") {
+    texts[selectedTextIndex].size = parseFloat(sizeNumber.value);
+    redrawCanvas();
+  }
 });
 
 redrawCanvas();
