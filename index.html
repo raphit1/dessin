@@ -310,7 +310,7 @@
       const dist = getDistance(e.touches);
       const midpoint = getMidpoint(e.touches);
       const zoomFactor = dist / lastDist;
-      let newScale = Math.min(Math.max(scale * zoomFactor, 1), 5);
+      let newScale = Math.min(Math.max(scale * zoomFactor, 1), 25);
 
       const rect = canvas.getBoundingClientRect();
       const midCanvasBefore = screenToCanvas(midpoint.x - rect.left, midpoint.y - rect.top);
