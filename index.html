@@ -63,6 +63,12 @@
   #modeToggle.active {
     background: #388e3c;
   }
+  #brushSizeDisplay {
+    display: inline-block;
+    min-width: 40px;
+    font-weight: bold;
+    margin-left: 5px;
+  }
 </style>
 </head>
 <body>
@@ -80,7 +86,8 @@
     </label>
 
     <label>Taille:
-      <input type="range" id="sizePicker" min="0.1" max="100" value="5" />
+      <input type="range" id="sizePicker" min="0.1" max="100" step="0.1" value="5" />
+      <span id="brushSizeDisplay">5 px</span>
     </label>
 
     <label>Fond:
@@ -105,6 +112,7 @@
 
   const colorPicker = document.getElementById("colorPicker");
   const sizePicker = document.getElementById("sizePicker");
+  const brushSizeDisplay = document.getElementById("brushSizeDisplay");
   const clearBtn = document.getElementById("clearBtn");
   const undoBtn = document.getElementById("undoBtn");
   const screenshotBtn = document.getElementById("screenshotBtn");
@@ -396,6 +404,11 @@
 
   clearBtn.addEventListener("click", clearCanvas);
   undoBtn.addEventListener("click", undoLast);
+
+  sizePicker.addEventListener("input", () => {
+    brushSizeDisplay.textContent = `${sizePicker.value} px`;
+  });
+
   redrawCanvas();
 </script>
 
