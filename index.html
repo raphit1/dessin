@@ -389,7 +389,7 @@ canvas.addEventListener("touchmove", (e) => {
         const deltaScale = dist / lastDist;
         const prevScale = scale;
         scale *= deltaScale;
-        scale = Math.min(Math.max(scale, 0.1), 5);
+        scale = Math.min(Math.max(scale, 1), 75);
         // adjust offset to zoom towards midpoint
         offsetX = midpoint.x - ((midpoint.x - offsetX) * (scale / prevScale));
         offsetY = midpoint.y - ((midpoint.y - offsetY) * (scale / prevScale));
