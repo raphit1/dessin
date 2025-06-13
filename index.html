@@ -298,6 +298,8 @@ modeToggle.addEventListener("click", () => {
   modeToggle.classList.toggle("active", mode === "draw");
   canvas.style.cursor = mode === "draw" ? "crosshair" : mode === "text" ? "text" : "grab";
   painting = false;
+  selectedTextIndex = null;
+  redrawCanvas();
 });
 
 canvas.addEventListener("click", (e) => {
@@ -328,124 +330,156 @@ bgImagePicker.addEventListener("change", e => {
 removeBgBtn.addEventListener("click", () => { bgImage = null; bgImagePicker.value = null; redrawCanvas(); });
 
 canvas.addEventListener("touchstart", (e) => {
-  if (mode === "pan" && e.touches.length === 2) {
-    e.preventDefault();
-    lastDist = getDistance(e.touches);
-    lastMidpoint = getMidpoint(e.touches);
-    isPanning = true;
-  } else if (mode === "draw" && e.touches.length === 1) {
-    startDraw(e);
+  if (mode === "draw") {
+    if (e.touches.length === 1) startDraw(e);
+  } else if (mode === "pan") {
+    if (e.touches.length === 1) {
+      const rect = canvas.getBoundingClientRect();
+      const pos = screenToCanvas(e.touches[0].clientX - rect.left, e.touches[0].clientY - rect.top);
+      const index = getTextAtPosition(pos);
+      if (index !== null) {
+        selectedTextIndex = index;
+        isDraggingText = true;
+        lastTouchOrMouse = pos;
+        redrawCanvas();
+      } else {
+        selectedTextIndex = null;
+        redrawCanvas();
+      }
+    } else if (e.touches.length === 2) {
+      // pinch zoom start
+      isPanning = false;
+      lastDist = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY
+      );
+      lastMidpoint = {
+        x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+        y: (e.touches[0].clientY + e.touches[1].clientY) / 2,
+      };
+    }
   }
-}, { passive: false });
-
-function getDistance(touches) {
-  const dx = touches[0].clientX - touches[1].clientX;
-  const dy = touches[0].clientY - touches[1].clientY;
-  return Math.hypot(dx, dy);
-}
-function getMidpoint(touches) {
-  return {
-    x: (touches[0].clientX + touches[1].clientX) / 2,
-    y: (touches[0].clientY + touches[1].clientY) / 2
-  };
-}
+});
 
 canvas.addEventListener("touchmove", (e) => {
-  if (mode === "pan" && e.touches.length === 2 && isPanning) {
-    e.preventDefault();
-    const dist = getDistance(e.touches);
-    const midpoint = getMidpoint(e.touches);
-    const zoomFactor = dist / lastDist;
-    let newScale = Math.min(Math.max(scale * zoomFactor, 1), 75);
-
-    const rect = canvas.getBoundingClientRect();
-    const midCanvasBefore = screenToCanvas(midpoint.x - rect.left, midpoint.y - rect.top);
-    scale = newScale;
-    clampOffsets();
-    const midCanvasAfter = screenToCanvas(midpoint.x - rect.left, midpoint.y - rect.top);
-
-    offsetX += (midCanvasAfter.x - midCanvasBefore.x) * scale;
-    offsetY += (midCanvasAfter.y - midCanvasBefore.y) * scale;
-    offsetX += midpoint.x - lastMidpoint.x;
-    offsetY += midpoint.y - lastMidpoint.y;
-    clampOffsets();
-
-    lastDist = dist;
-    lastMidpoint = midpoint;
-
-    redrawCanvas();
-  } else if (mode === "draw" && e.touches.length === 1) {
-    draw(e);
+  e.preventDefault();
+  if (mode === "draw") {
+    if (e.touches.length === 1) draw(e);
+  } else if (mode === "pan") {
+    if (isDraggingText && e.touches.length === 1 && selectedTextIndex !== null) {
+      const rect = canvas.getBoundingClientRect();
+      const pos = screenToCanvas(e.touches[0].clientX - rect.left, e.touches[0].clientY - rect.top);
+      const dx = pos.x - lastTouchOrMouse.x;
+      const dy = pos.y - lastTouchOrMouse.y;
+      texts[selectedTextIndex].x += dx;
+      texts[selectedTextIndex].y += dy;
+      lastTouchOrMouse = pos;
+      redrawCanvas();
+    } else if (e.touches.length === 2) {
+      // pinch zoom move
+      const dist = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY
+      );
+      const midpoint = {
+        x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+        y: (e.touches[0].clientY + e.touches[1].clientY) / 2,
+      };
+      if (lastDist) {
+        const deltaScale = dist / lastDist;
+        const prevScale = scale;
+        scale *= deltaScale;
+        scale = Math.min(Math.max(scale, 0.1), 5);
+        // adjust offset to zoom towards midpoint
+        offsetX = midpoint.x - ((midpoint.x - offsetX) * (scale / prevScale));
+        offsetY = midpoint.y - ((midpoint.y - offsetY) * (scale / prevScale));
+        clampOffsets();
+        redrawCanvas();
+      }
+      lastDist = dist;
+      lastMidpoint = midpoint;
+    }
   }
 }, { passive: false });
 
 canvas.addEventListener("touchend", (e) => {
-  if (mode === "pan" && e.touches.length < 2) {
-    isPanning = false;
-    lastDist = null;
-    lastMidpoint = null;
+  if (mode === "draw") endDraw(e);
+  if (mode === "pan") {
+    if (e.touches.length === 0) {
+      isDraggingText = false;
+      lastDist = null;
+      lastMidpoint = null;
+    }
   }
-  if (mode === "draw" && e.touches.length === 0) endDraw(e);
 });
 
-clearBtn.addEventListener("click", () => { paths = []; texts = []; redrawCanvas(); });
-undoBtn.addEventListener("click", () => { paths.pop(); redrawCanvas(); });
+undoBtn.addEventListener("click", () => {
+  if (paths.length > 0) {
+    paths.pop();
+    redrawCanvas();
+  }
+});
+
+clearBtn.addEventListener("click", () => {
+  paths = [];
+  texts = [];
+  redrawCanvas();
+});
+
+sizePicker.addEventListener("input", e => {
+  sizeNumber.value = e.target.value;
+  brushSizeDisplay.textContent = `${e.target.value} px`;
+});
+sizeNumber.addEventListener("input", e => {
+  let val = e.target.value;
+  if (val < 0.1) val = 0.1;
+  else if (val > 100) val = 100;
+  sizePicker.value = val;
+  brushSizeDisplay.textContent = `${val} px`;
+});
 
 screenshotBtn.addEventListener("click", () => {
-  const title = titleInput.value.trim();
-  const filename = title ? `${title}.png` : "dessin.png";
+  // create temp canvas to render full res without pan/zoom
   const tempCanvas = document.createElement("canvas");
-  const tempCtx = tempCanvas.getContext("2d");
   tempCanvas.width = canvas.width;
   tempCanvas.height = canvas.height;
+  const tempCtx = tempCanvas.getContext("2d");
 
   drawBackground(tempCtx);
+
   for (const path of paths) {
     tempCtx.beginPath();
     for (let i = 0; i < path.length; i++) {
-      const point = path[i];
-      tempCtx.lineWidth = point.size;
-      tempCtx.strokeStyle = point.color;
-      tempCtx.shadowBlur = 0;
-      tempCtx.shadowColor = "transparent";
-      if (i === 0) tempCtx.moveTo(point.x, point.y);
-      else tempCtx.lineTo(point.x, point.y);
+      const p = path[i];
+      tempCtx.lineWidth = p.size;
+      tempCtx.strokeStyle = p.color;
+      if (i === 0) tempCtx.moveTo(p.x, p.y);
+      else tempCtx.lineTo(p.x, p.y);
       tempCtx.stroke();
     }
   }
+
   for (const t of texts) {
     tempCtx.fillStyle = t.color;
     tempCtx.font = `${t.size}px sans-serif`;
     tempCtx.fillText(t.text, t.x, t.y);
   }
 
-  const link = document.createElement("a");
-  link.download = filename;
-  link.href = tempCanvas.toDataURL("image/png");
-  link.click();
+  const image = tempCanvas.toDataURL("image/png");
+  const a = document.createElement("a");
+  a.href = image;
+  a.download = (titleInput.value ? titleInput.value : "dessin") + ".png";
+  a.click();
 });
 
-// Ajout demandé : changer taille texte sélectionné
-sizePicker.addEventListener("input", () => {
-  sizeNumber.value = sizePicker.value;
-  brushSizeDisplay.textContent = `${sizePicker.value} px`;
-
-  if (selectedTextIndex !== null && mode === "pan") {
-    texts[selectedTextIndex].size = parseFloat(sizePicker.value);
-    redrawCanvas();
-  }
-});
-sizeNumber.addEventListener("input", () => {
-  sizePicker.value = sizeNumber.value;
-  brushSizeDisplay.textContent = `${sizeNumber.value} px`;
-
-  if (selectedTextIndex !== null && mode === "pan") {
-    texts[selectedTextIndex].size = parseFloat(sizeNumber.value);
-    redrawCanvas();
-  }
+window.addEventListener("resize", () => {
+  // Adjust canvas size on window resize if needed
+  // Optionally implement responsive scaling here
 });
 
-redrawCanvas();
+window.onload = () => {
+  redrawCanvas();
+};
 </script>
 </body>
 </html>
